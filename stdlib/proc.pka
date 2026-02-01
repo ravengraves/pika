@@ -1,0 +1,79 @@
+type proc_cstr = *[*]u8;
+type proc_cstr_list = *[*]nullable *[*]u8;
+type proc_timespec = struct {
+	sec: i64,
+	nsec: i64,
+};
+
+def proc_PRIO_PROCESS: i32 = 0;
+def proc_PRIO_PGRP: i32 = 1;
+def proc_PRIO_USER: i32 = 2;
+
+def proc_WNOHANG: i32 = 1;
+
+def proc_SIGHUP: i32 = 1;
+def proc_SIGINT: i32 = 2;
+def proc_SIGKILL: i32 = 9;
+def proc_SIGTERM: i32 = 15;
+
+def proc_PR_SET_PDEATHSIG: i32 = 1;
+
+@symbol("pk_getppid") fn proc_getppid() i32;
+@symbol("pk_kill") fn proc_kill(pid: i32, sig: i32) i32;
+@symbol("pk_prctl") fn proc_prctl(
+	option: i32,
+	arg2: uintptr,
+	arg3: uintptr,
+	arg4: uintptr,
+	arg5: uintptr,
+) i32;
+
+@symbol("pk_wait4") fn proc_wait4(pid: i32, status: *i32, options: i32) i32;
+
+fn proc_wait(pid: i32, status: *i32) i32 = {
+	return proc::wait4(pid, status, 0);
+};
+
+fn proc_wait_nohang(pid: i32, status: *i32) i32 = {
+	return proc::wait4(pid, status, proc::WNOHANG);
+};
+
+@symbol("pk_spawn") fn proc_spawn(
+	path: proc_cstr,
+	argv: proc_cstr_list,
+	envp: proc_cstr_list,
+) i32;
+
+fn proc_spawn_simple(path: proc_cstr) i32 = {
+	let argv: [2]nullable *[*]u8 = [path: nullable *[*]u8, null];
+	let env: [1]nullable *[*]u8 = [null];
+	return proc::spawn(path, &argv: proc_cstr_list, &env: proc_cstr_list);
+};
+
+@symbol("pk_getpriority") fn proc_getpriority(which: i32, who: i32) i32;
+@symbol("pk_setpriority") fn proc_setpriority(which: i32, who: i32, prio: i32) i32;
+
+fn proc_setpriority_process(pid: i32, prio: i32) i32 = {
+	return proc::setpriority(proc::PRIO_PROCESS, pid, prio);
+};
+
+fn proc_getpriority_process(pid: i32) i32 = {
+	return proc::getpriority(proc::PRIO_PROCESS, pid);
+};
+
+@symbol("pk_exit") fn proc_exit(status: i32) void;
+@symbol("pk_nanosleep") fn proc_nanosleep(
+	req: *proc_timespec,
+	rem: nullable *proc_timespec,
+) i32;
+
+fn proc_pdeathsig(sig: i32) i32 = {
+	return proc::prctl(proc::PR_SET_PDEATHSIG, sig: uintptr, 0, 0, 0);
+};
+
+fn proc_sleep_ms(ms: i32) void = {
+	let sec: i64 = (ms / 1000): i64;
+	let nsec: i64 = ((ms % 1000) * 1000000): i64;
+	let ts = proc_timespec { sec = sec, nsec = nsec };
+	proc::nanosleep(&ts, null);
+};

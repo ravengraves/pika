@@ -1,0 +1,19 @@
+@symbol("pk_getuid") fn sys_getuid() i32;
+@symbol("pk_geteuid") fn sys_geteuid() i32;
+@symbol("pk_getgid") fn sys_getgid() i32;
+@symbol("pk_getegid") fn sys_getegid() i32;
+@symbol("pk_getpid") fn sys_getpid() i32;
+@symbol("pk_getppid") fn sys_getppid() i32;
+@symbol("pk_getrandom") fn sys_getrandom(buf: *opaque, buflen: size, flags: u32) i64;
+
+def sys_GRND_NONBLOCK: u32 = 1;
+def sys_GRND_RANDOM: u32 = 2;
+
+fn sys_isroot() bool = {
+	return sys::geteuid() == 0;
+};
+
+fn sys_random_bytes(buf: *[*]u8, n: size) bool = {
+	let got = sys::getrandom(buf: *opaque, n, 0);
+	return got == n: i64;
+};

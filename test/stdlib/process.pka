@@ -1,0 +1,20 @@
+use proc;
+use rt;
+use strings;
+
+export fn main() void = {
+	assert(proc::setpriority_process(0, 10) == 0);
+	let prio = proc::getpriority_process(0);
+	assert(prio == 10);
+	assert(proc::getppid() > 0);
+	assert(proc::pdeathsig(proc::SIGKILL) == 0);
+
+	let path = strings::toutf8("/bin/true\0"): *[*]u8;
+	let pid = proc::spawn_simple(path: proc::cstr);
+	assert(pid > 0);
+
+	let status: i32 = 0;
+	let waited = proc::wait(pid, &status);
+	assert(waited == pid);
+	assert(status == 0);
+};

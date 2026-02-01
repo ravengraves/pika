@@ -1,0 +1,33 @@
+use file;
+use net;
+use proc;
+use rt;
+use strings;
+
+fn read_port(path: file::cstr) u16 = {
+	let fd = file::open_ro(path);
+	if (fd < 0) { return 0; };
+	let data: [2]u8 = [0...];
+	let got = file::read_exact(fd, &data: *opaque, 2);
+	file::close(fd);
+	if (got != 2) { return 0; };
+	let port: u16 = data[0]: u16 | ((data[1]: u16) << 8);
+	return port;
+};
+
+export fn main() void = {
+	let port_path = strings::toutf8("/tmp/libpk_network.port\0"): *[*]u8;
+	let port: u16 = 0;
+	for (port == 0) {
+		port = read_port(port_path: file::cstr);
+		if (port == 0) { proc::sleep_ms(10); };
+	};
+	let client = net::tcp_connect_local(port);
+	assert(client >= 0);
+	let msg = strings::toutf8("ping\n");
+	let msg_len: size = len(msg);
+	let sent = net::send(client, msg: *[*]u8: *opaque, msg_len, 0);
+	assert(sent == msg_len: i64);
+	net::close(client);
+	proc::exit(0);
+};

@@ -1,0 +1,133 @@
+use file;
+use rt;
+use strings;
+
+fn bytes_equal(a: *[*]u8, b: *[*]u8, n: size) bool = {
+	for (let i = 0z; i < n; i += 1) {
+		if (a[i] != b[i]) { return false; };
+	};
+	return true;
+};
+
+export fn main() void = {
+	let path = strings::toutf8("/tmp/libpk_file_io.txt\0"): *[*]u8;
+	let data = strings::toutf8("pkio 1\n");
+	let data_len: size = len(data);
+	let fd = file::open_rw_trunc(path: file::cstr, 0o644);
+	assert(fd >= 0);
+
+	let wrote = file::write_all(fd, data: *[*]u8: *opaque, data_len);
+	assert(wrote == data_len: i64);
+	assert(file::fsync(fd) == 0);
+	assert(file::close(fd) == 0);
+
+	let fd2 = file::open_ro(path: file::cstr);
+	assert(fd2 >= 0);
+	let buf: [7]u8 = [0...];
+	let readn = file::read_exact(fd2, &buf: *opaque, data_len);
+	assert(readn == data_len: i64);
+	assert(file::close(fd2) == 0);
+
+	assert(bytes_equal(&buf: *[*]u8, data: *[*]u8, data_len));
+
+	// Test file::exists
+	assert(file::exists(path: file::cstr) == true);
+	let noexist = strings::toutf8("/tmp/noexist_file\0"): *[*]u8;
+	assert(file::exists(noexist: file::cstr) == false);
+
+	// Test file::isfile
+	assert(file::isfile(path: file::cstr) == true);
+	let tmpdir = strings::toutf8("/tmp\0"): *[*]u8;
+	assert(file::isfile(tmpdir: file::cstr) == false);
+
+	// Test file::isdir
+	assert(file::isdir(tmpdir: file::cstr) == true);
+	assert(file::isdir(path: file::cstr) == false);
+
+	// Test file::size
+	let sz = file::size(path: file::cstr);
+	assert(sz == data_len: i64);
+
+	// Test file::size_fd
+	let fd3 = file::open_ro(path: file::cstr);
+	assert(fd3 >= 0);
+	let sz2 = file::size_fd(fd3);
+	assert(sz2 == data_len: i64);
+	assert(file::close(fd3) == 0);
+
+	// Test file::mkdir and file::rmdir
+	let testdir = strings::toutf8("/tmp/libpk_testdir\0"): *[*]u8;
+	// Clean up if exists from previous run
+	file::rmdir(testdir: file::cstr);
+	assert(file::mkdir(testdir: file::cstr, 0o755) == 0);
+	assert(file::isdir(testdir: file::cstr) == true);
+	assert(file::rmdir(testdir: file::cstr) == 0);
+	assert(file::exists(testdir: file::cstr) == false);
+
+	// Test file::rm
+	let unlinkpath = strings::toutf8("/tmp/libpk_rm.txt\0"): *[*]u8;
+	let ufd = file::open_rw_trunc(unlinkpath: file::cstr, 0o644);
+	assert(ufd >= 0);
+	assert(file::close(ufd) == 0);
+	assert(file::exists(unlinkpath: file::cstr) == true);
+	assert(file::rm(unlinkpath: file::cstr) == 0);
+	assert(file::exists(unlinkpath: file::cstr) == false);
+
+	// Test file::getcwd
+	let cwdbuf: [256]u8 = [0...];
+	let cwdlen = file::getcwd(&cwdbuf: *[*]u8, 256);
+	assert(cwdlen > 0);
+
+	// Test file::opendir/readdir/closedir on /tmp
+	let dfd = file::opendir(tmpdir: file::cstr);
+	assert(dfd >= 0);
+	let entcount: i32 = 0;
+	let namebuf: [256]u8 = [0...];
+	let kind: u8 = 0;
+	for (true) {
+		let n = file::readdir(dfd, &namebuf: *[*]u8, 256, &kind);
+		if (n <= 0) { break; };
+		entcount += 1;
+	};
+	assert(file::closedir(dfd) == 0);
+	assert(entcount > 0);
+
+	// Test file::seek/tell/rewind
+	let seekpath = strings::toutf8("/tmp/libpk_seek.txt\0"): *[*]u8;
+	let sfd = file::open_rw_trunc(seekpath: file::cstr, 0o644);
+	assert(sfd >= 0);
+	let seekdata = strings::toutf8("0123456789");
+	let seek_len: size = len(seekdata);
+	let swrote = file::write_all(sfd, seekdata: *[*]u8: *opaque, seek_len);
+	assert(swrote == seek_len: i64);
+
+	// Rewind and read first byte
+	assert(file::rewind(sfd) == 0);
+	let sbuf: [1]u8 = [0];
+	assert(file::read(sfd, &sbuf: *opaque, 1) == 1);
+	assert(sbuf[0] == '0');
+
+	// Seek to position 5 and read
+	assert(file::seek(sfd, 5, file::SEEK_SET) == 5);
+	assert(file::read(sfd, &sbuf: *opaque, 1) == 1);
+	assert(sbuf[0] == '5');
+
+	// Tell current position (should be 6)
+	assert(file::tell(sfd) == 6);
+
+	// Seek relative
+	assert(file::seek(sfd, 2, file::SEEK_CUR) == 8);
+	assert(file::read(sfd, &sbuf: *opaque, 1) == 1);
+	assert(sbuf[0] == '8');
+
+	// Seek from end
+	assert(file::seek(sfd, -1, file::SEEK_END) == 9);
+	assert(file::read(sfd, &sbuf: *opaque, 1) == 1);
+	assert(sbuf[0] == '9');
+
+	assert(file::close(sfd) == 0);
+	file::rm(seekpath: file::cstr);
+
+	// Cleanup test file
+	file::rm(path: file::cstr);
+};

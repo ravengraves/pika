@@ -1,0 +1,80 @@
+type net_socklen = u32;
+type net_sockaddr_in = struct {
+	family: u16,
+	port: u16,
+	addr: u32,
+	zero: u64,
+};
+
+def net_AF_INET: i32 = 2;
+def net_SOCK_STREAM: i32 = 1;
+def net_IPPROTO_TCP: i32 = 6;
+
+def net_SHUT_RD: i32 = 0;
+def net_SHUT_WR: i32 = 1;
+def net_SHUT_RDWR: i32 = 2;
+
+@symbol("pk_socket") fn net_socket(domain: i32, kind: i32, proto: i32) i32;
+@symbol("pk_connect") fn net_connect(fd: i32, addr: *opaque, addrlen: size) i32;
+@symbol("pk_bind") fn net_bind(fd: i32, addr: *opaque, addrlen: size) i32;
+@symbol("pk_listen") fn net_listen(fd: i32, backlog: i32) i32;
+@symbol("pk_accept") fn net_accept(fd: i32, addr: *opaque, addrlen: *net_socklen) i32;
+@symbol("pk_getsockname") fn net_getsockname(
+	fd: i32,
+	addr: *opaque,
+	addrlen: *net_socklen,
+) i32;
+@symbol("pk_send") fn net_send(fd: i32, buf: *opaque, count: size, flags: i32) i64;
+@symbol("pk_recv") fn net_recv(fd: i32, buf: *opaque, count: size, flags: i32) i64;
+@symbol("pk_shutdown") fn net_shutdown(fd: i32, how: i32) i32;
+@symbol("pk_close") fn net_close(fd: i32) i32;
+@symbol("pk_htons") fn net_htons(v: u16) u16;
+@symbol("pk_ntohs") fn net_ntohs(v: u16) u16;
+@symbol("pk_htonl") fn net_htonl(v: u32) u32;
+@symbol("pk_ntohl") fn net_ntohl(v: u32) u32;
+
+fn net_sockaddr_in_init(a: u8, b: u8, c: u8, d: u8, port: u16) net_sockaddr_in = {
+	let ip_host: u32 = (a: u32 << 24)
+		| (b: u32 << 16)
+		| (c: u32 << 8)
+		| d: u32;
+	return net_sockaddr_in {
+		family = net::AF_INET: u16,
+		port = net::htons(port),
+		addr = net::htonl(ip_host),
+		zero = 0,
+	};
+};
+
+fn net_tcp_listen_local(port: u16, backlog: i32, out_port: *u16) i32 = {
+	let fd = net::socket(net::AF_INET, net::SOCK_STREAM, net::IPPROTO_TCP);
+	if (fd < 0) { return fd; };
+	let addr = net::sockaddr_in_init(127, 0, 0, 1, port);
+	if (net::bind(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
+		net::close(fd);
+		return -1;
+	};
+	if (net::listen(fd, backlog) != 0) {
+		net::close(fd);
+		return -1;
+	};
+	let alen: net_socklen = size(net_sockaddr_in): net_socklen;
+	let got = addr;
+	if (net::getsockname(fd, &got: *opaque, &alen) != 0) {
+		net::close(fd);
+		return -1;
+	};
+	*out_port = net::ntohs(got.port);
+	return fd;
+};
+
+fn net_tcp_connect_local(port: u16) i32 = {
+	let fd = net::socket(net::AF_INET, net::SOCK_STREAM, net::IPPROTO_TCP);
+	if (fd < 0) { return fd; };
+	let addr = net::sockaddr_in_init(127, 0, 0, 1, port);
+	if (net::connect(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
+		net::close(fd);
+		return -1;
+	};
+	return fd;
+};

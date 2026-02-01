@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Simple Pika compiler driver.
+# Usage: compile.sh <pka files…> -o <output_executable>
+
+set -e
+
+CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wfloat-conversion \
+-Wno-overlength-strings -Wno-unused-function -Wno-unused-variable \
+-Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality \
+-ffunction-sections -fdata-sections -mshstk \
+-O0 -ffast-math -march=native -mtune=native -fno-builtin -ffreestanding -nostdlib \
+-fno-asynchronous-unwind-tables -fno-unwind-tables -fno-stack-protector -fno-ident \
+-Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s"
+
+LIBPK_MODULES=(
+  stdlib/file.pka
+  stdlib/net.pka
+  stdlib/shm.pka
+  stdlib/proc.pka
+  stdlib/clock.pka
+  stdlib/sys.pka
+  stdlib/io.pka
+)
+
+TARGET=""
+INFILES=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift; TARGET="$1" ;;
+    *) INFILES+=( "$1" ) ;;
+  esac
+  shift
+done
+
+if [ -z "$TARGET" ] || [ ${#INFILES[@]} -eq 0 ]; then
+  echo "Usage: $0 <pka files...> -o <output_executable>" >&2
+  exit 1
+fi
+
+TMPFILE=$(mktemp /tmp/compiled-XXXXXX.c)
+cat "${LIBPK_MODULES[@]}" "${INFILES[@]}" | bin/pika2c > "$TMPFILE"
+
+start_ms=$(date +%s%3N)
+clang $CFLAGS -o "$TARGET" "$TMPFILE" runtime/rt.c stdlib/libpk.c
+end_ms=$(date +%s%3N)
+duration=$((end_ms - start_ms))
+
+rm -f "$TMPFILE"
+echo "Built $TARGET"
+echo "Build took ${duration} ms"

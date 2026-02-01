@@ -1,0 +1,130 @@
+type shm_cstr = *[*]u8;
+
+def shm_PROT_READ: i32 = 0x1;
+def shm_PROT_WRITE: i32 = 0x2;
+
+def shm_MAP_SHARED: i32 = 0x01;
+def shm_MAP_PRIVATE: i32 = 0x02;
+def shm_MAP_ANON: i32 = 0x20;
+
+def shm_MS_SYNC: i32 = 0x04;
+
+def shm_RING_HEAD_OFF: size = 0;
+def shm_RING_TAIL_OFF: size = 8;
+def shm_RING_DATA_OFF: size = 16;
+
+@symbol("pk_mmap") fn shm_map(
+    addr: nullable *opaque,
+    length: size,
+    prot: i32,
+    flags: i32,
+    fd: i32,
+    off: i64,
+) *opaque;
+@symbol("pk_munmap") fn shm_unmap(addr: *opaque, length: size) i32;
+@symbol("pk_msync") fn shm_sync(addr: *opaque, length: size, flags: i32) i32;
+@symbol("pk_map_failed") fn shm_map_failed() *opaque;
+
+fn shm_map_shared_file(path: shm_cstr, length: size, mode: u32, fd_out: *i32) *opaque = {
+	let fd = file::open_rw_trunc(path: file::cstr, mode);
+	if (fd < 0) { return shm::map_failed(); };
+	if (file::ftruncate(fd, length: i64) != 0) {
+		file::close(fd);
+		return shm::map_failed();
+	};
+	let map = shm::map(
+		null,
+		length,
+		shm::PROT_READ | shm::PROT_WRITE,
+		shm::MAP_SHARED,
+		fd,
+		0i64,
+	);
+	if (map == shm::map_failed()) {
+		file::close(fd);
+		return shm::map_failed();
+	};
+	*fd_out = fd;
+	return map;
+};
+
+fn shm_map_shared_existing(path: shm_cstr, length: size, fd_out: *i32) *opaque = {
+	let fd = file::open_rw(path: file::cstr);
+	if (fd < 0) { return shm::map_failed(); };
+	let map = shm::map(
+		null,
+		length,
+		shm::PROT_READ | shm::PROT_WRITE,
+		shm::MAP_SHARED,
+		fd,
+		0i64,
+	);
+	if (map == shm::map_failed()) {
+		file::close(fd);
+		return shm::map_failed();
+	};
+	*fd_out = fd;
+	return map;
+};
+
+fn shm_u64_store_le(buf: *[*]u8, off: size, val: u64) void = {
+	for (let i = 0z; i < 8; i += 1) {
+		let shift: u64 = (i * 8): u64;
+		buf[off + i] = (val >> shift): u8;
+	};
+};
+
+fn shm_u64_load_le(buf: *[*]u8, off: size) u64 = {
+	let v: u64 = 0;
+	for (let i = 0z; i < 8; i += 1) {
+		let shift: u64 = (i * 8): u64;
+		v |= (buf[off + i]: u64) << shift;
+	};
+	return v;
+};
+
+fn shm_ring_init(buf: *[*]u8) void = {
+	shm::u64_store_le(buf, shm::RING_HEAD_OFF, 0);
+	shm::u64_store_le(buf, shm::RING_TAIL_OFF, 0);
+};
+
+fn shm_ring_write(buf: *[*]u8, cap: size, data: *[*]u8, count: size) size = {
+	if (cap == 0) { return 0; };
+	let head: u64 = shm::u64_load_le(buf, shm::RING_HEAD_OFF);
+	let tail: u64 = shm::u64_load_le(buf, shm::RING_TAIL_OFF);
+	let cap64: u64 = cap: u64;
+	let used: u64 = head - tail;
+	if (used >= cap64) { return 0; };
+	let space: u64 = cap64 - used;
+	let write: u64 = space;
+	let count64: u64 = count: u64;
+	if (count64 < space) { write = count64; };
+	let wcount: size = write: size;
+	for (let i = 0z; i < wcount; i += 1) {
+		let idx: u64 = (head + i: u64) % cap64;
+		let dst = shm::RING_DATA_OFF + idx: size;
+		buf[dst] = data[i];
+	};
+	shm::u64_store_le(buf, shm::RING_HEAD_OFF, head + write);
+	return wcount;
+};
+
+fn shm_ring_read(buf: *[*]u8, cap: size, out: *[*]u8, count: size) size = {
+	if (cap == 0) { return 0; };
+	let head: u64 = shm::u64_load_le(buf, shm::RING_HEAD_OFF);
+	let tail: u64 = shm::u64_load_le(buf, shm::RING_TAIL_OFF);
+	let cap64: u64 = cap: u64;
+	let avail: u64 = head - tail;
+	if (avail == 0) { return 0; };
+	let read: u64 = avail;
+	let count64: u64 = count: u64;
+	if (count64 < avail) { read = count64; };
+	let rcount: size = read: size;
+	for (let i = 0z; i < rcount; i += 1) {
+		let idx: u64 = (tail + i: u64) % cap64;
+		let src = shm::RING_DATA_OFF + idx: size;
+		out[i] = buf[src];
+	};
+	shm::u64_store_le(buf, shm::RING_TAIL_OFF, tail + read);
+	return rcount;
+};

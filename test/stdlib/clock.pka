@@ -1,0 +1,15 @@
+use clock;
+use proc;
+use rt;
+
+export fn main() void = {
+	clock::calibrate(0.02f64);
+	let start = clock::now();
+	proc::sleep_ms(10);
+	let stop = clock::now();
+	let elapsed = clock::dt(stop, start);
+	assert(stop > start);
+	assert(elapsed > 0.001f64);
+	let elapsed2 = clock::since(start);
+	assert(elapsed2 >= elapsed);
+};

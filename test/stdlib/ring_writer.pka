@@ -1,0 +1,24 @@
+use proc;
+use shm;
+use strings;
+
+export fn main() void = {
+	let fd: i32 = -1;
+// Correctly pass the path string returned by ring_path()
+let map = shm::map_shared_file(ring_path(): shm::cstr, RING_FILE_LEN, 0o600, &fd);
+	if (map == shm::map_failed()) { return; };
+
+	let buf: *[*]u8 = map: *[*]u8;
+	shm::ring_init(buf);
+
+	let msg = strings::toutf8("hello pika\n");
+	let msg_len: size = len(msg);
+	for (true) {
+		let wrote = shm::ring_write(buf, RING_CAP, msg: *[*]u8, msg_len);
+		if (wrote != msg_len) {
+			proc::sleep_ms(10);
+		} else {
+			proc::sleep_ms(50);
+		};
+	};
+};

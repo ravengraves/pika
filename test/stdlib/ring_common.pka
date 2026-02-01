@@ -1,0 +1,53 @@
+use file;
+use proc;
+use rt;
+use shm;
+use strings;
+
+def RING_CAP: size = 256;
+def RING_FILE_LEN: size = shm::RING_DATA_OFF + RING_CAP;
+def PORT_FILE_LEN: size = 8;
+
+fn ring_path() *[*]u8 = {
+	return strings::toutf8("/tmp/libpk_ring.bin\0"): *[*]u8;
+};
+
+fn port_path() *[*]u8 = {
+	return strings::toutf8("/tmp/libpk_ring.port\0"): *[*]u8;
+};
+
+fn ring_write_port_file(port: u16) void = {
+	let fd = file::open_rw_trunc(port_path(): file::cstr, 0o600);
+	if (fd < 0) { return; };
+	let buf: [8]u8 = [0...];
+	shm::u64_store_le(&buf: *[*]u8, 0, port: u64);
+	file::write_all(fd, &buf: *opaque, PORT_FILE_LEN);
+	file::fsync(fd);
+	file::close(fd);
+};
+
+fn ring_read_port_file() u16 = {
+	let port: u16 = 0;
+	for (port == 0) {
+		let fd = file::open_ro(port_path(): file::cstr);
+		if (fd >= 0) {
+			let buf: [8]u8 = [0...];
+			let got = file::read_exact(fd, &buf: *opaque, PORT_FILE_LEN);
+			file::close(fd);
+			if (got == PORT_FILE_LEN: i64) {
+				port = shm::u64_load_le(&buf: *[*]u8, 0): u16;
+			};
+		};
+		if (port == 0) { proc::sleep_ms(50); };
+	};
+	return port;
+};
+
+fn ring_map_existing(fd_out: *i32) *opaque = {
+	let map = shm::map_failed();
+	for (map == shm::map_failed()) {
+		map = shm::map_shared_existing(ring_path(): shm::cstr, RING_FILE_LEN, fd_out);
+		if (map == shm::map_failed()) { proc::sleep_ms(50); };
+	};
+	return map;
+};

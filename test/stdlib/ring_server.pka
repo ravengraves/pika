@@ -1,0 +1,39 @@
+use net;
+use proc;
+use shm;
+
+export fn main() void = {
+	let fd: i32 = -1;
+	let map = ring_map_existing(&fd);
+	let buf: *[*]u8 = map: *[*]u8;
+
+	let port: u16 = 0;
+	let server = net::tcp_listen_local(0, 8, &port);
+	if (server < 0) { return; };
+	ring_write_port_file(port);
+
+	let peer: net_sockaddr_in = net_sockaddr_in {
+		family = 0,
+		port = 0,
+		addr = 0,
+		zero = 0,
+	};
+	let peer_len: net_socklen = size(net_sockaddr_in): net_socklen;
+	let conn = net::accept(server, &peer: *opaque, &peer_len);
+	if (conn < 0) { return; };
+
+	let out: [64]u8 = [0...];
+	for (true) {
+		let got = shm::ring_read(buf, RING_CAP, &out: *[*]u8, 64);
+		if (got == 0) {
+			proc::sleep_ms(10);
+			continue;
+		};
+		let sent = net::send(conn, &out: *opaque, got, 0);
+		if (sent <= 0) {
+			net::close(conn);
+			conn = net::accept(server, &peer: *opaque, &peer_len);
+			if (conn < 0) { proc::sleep_ms(50); };
+		};
+	};
+};

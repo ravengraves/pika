@@ -1,0 +1,31 @@
+type io_pollfd = struct {
+	fd: i32,
+	events: i16,
+	revents: i16,
+};
+
+def io_POLLIN: i16 = 0x0001;
+def io_POLLPRI: i16 = 0x0002;
+def io_POLLOUT: i16 = 0x0004;
+def io_POLLERR: i16 = 0x0008;
+def io_POLLHUP: i16 = 0x0010;
+def io_POLLNVAL: i16 = 0x0020;
+
+@symbol("pk_poll") fn io_poll(fds: *io_pollfd, nfds: size, timeout_ms: i32) i32;
+
+fn io_poll_one(fd: i32, events: i16, timeout_ms: i32) i16 = {
+	let pfd = io_pollfd { fd = fd, events = events, revents = 0 };
+	let ret = io::poll(&pfd, 1, timeout_ms);
+	if (ret <= 0) { return 0; };
+	return pfd.revents;
+};
+
+fn io_wait_readable(fd: i32, timeout_ms: i32) bool = {
+	let revents = io::poll_one(fd, io::POLLIN, timeout_ms);
+	return (revents & io::POLLIN) != 0;
+};
+
+fn io_wait_writable(fd: i32, timeout_ms: i32) bool = {
+	let revents = io::poll_one(fd, io::POLLOUT, timeout_ms);
+	return (revents & io::POLLOUT) != 0;
+};

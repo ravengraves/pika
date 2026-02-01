@@ -1,0 +1,62 @@
+use file;
+use net;
+use proc;
+use rt;
+use strings;
+
+fn write_port(path: file::cstr, port: u16) void = {
+	let fd = file::open_rw_trunc(path, 0o600);
+	assert(fd >= 0);
+	let data: [2]u8 = [0...];
+	data[0] = port: u8;
+	data[1] = (port >> 8): u8;
+	let wrote = file::write_all(fd, &data: *opaque, 2);
+	assert(wrote == 2);
+	assert(file::close(fd) == 0);
+};
+
+fn bytes_equal(a: *[*]u8, b: *[*]u8, n: size) bool = {
+	for (let i = 0z; i < n; i += 1) {
+		if (a[i] != b[i]) { return false; };
+	};
+	return true;
+};
+
+export fn main() void = {
+	let port: u16 = 0;
+	let server = net::tcp_listen_local(0, 8, &port);
+	assert(server >= 0);
+
+	let port_path = strings::toutf8("/tmp/libpk_network.port\0"): *[*]u8;
+	write_port(port_path: file::cstr, port);
+
+	let child_path = strings::toutf8("./build/bin/network_client\0"): *[*]u8;
+	let pid = proc::spawn_simple(child_path: proc::cstr);
+	assert(pid > 0);
+
+	let peer: net_sockaddr_in = net_sockaddr_in {
+		family = 0,
+		port = 0,
+		addr = 0,
+		zero = 0,
+	};
+	let peer_len: net_socklen = size(net_sockaddr_in): net_socklen;
+	let conn = net::accept(server, &peer: *opaque, &peer_len);
+	assert(conn >= 0);
+	let buf: [5]u8 = [0...];
+	let recvd = net::recv(conn, &buf: *opaque, 5, 0);
+
+	let expect = strings::toutf8("ping\n");
+	let expect_len: size = len(expect);
+	assert(recvd == expect_len: i64);
+	assert(bytes_equal(&buf: *[*]u8, expect: *[*]u8, expect_len));
+	assert(net::close(conn) == 0);
+	assert(net::close(server) == 0);
+
+	let status: i32 = 0;
+	let waited = proc::wait(pid, &status);
+	assert(waited == pid);
+	assert(status == 0);
+
+	file::rm(port_path: file::cstr);
+};
