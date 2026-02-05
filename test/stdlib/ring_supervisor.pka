@@ -34,6 +34,10 @@ export fn main() void = {
 	let client = proc::spawn_simple(client_path: proc::cstr);
 	if (client > 0) { proc::setpriority_process(client, 0); };
 
-// Instead of an infinite loop, just output a success value and finish.
-rt::write(1, "5\n", 3);
-}
+	for (true) {
+		writer = ensure_proc(writer, writer_path: proc::cstr, 10);
+		server = ensure_proc(server, server_path: proc::cstr, 5);
+		client = ensure_proc(client, client_path: proc::cstr, 0);
+		proc::sleep_ms(2000);
+	};
+};

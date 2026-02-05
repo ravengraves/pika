@@ -72,8 +72,41 @@ fn proc_pdeathsig(sig: i32) i32 = {
 };
 
 fn proc_sleep_ms(ms: i32) void = {
-	let sec: i64 = (ms / 1000): i64;
-	let nsec: i64 = ((ms % 1000) * 1000000): i64;
-	let ts = proc_timespec { sec = sec, nsec = nsec };
-	proc::nanosleep(&ts, null);
+    // Convert the millisecond value to a double-precision float once.
+    let f_ms = ms: f64;
+    // Total seconds as a float.
+    let f_sec = f_ms * (1.0f64 / 1000.0f64);
+    // Extract integer part (seconds) and fractional part.
+    let sec = (f_sec: i64);
+    let frac = f_sec - (sec: f64);
+    // Fractional seconds to nanoseconds.
+    let nsec: i64 = (frac * 1_000_000_000.0f64): i64;
+    let ts = proc_timespec { sec = sec, nsec = nsec };
+    proc::nanosleep(&ts, null);
+};
+
+// Non-blocking check if a child process has terminated.
+//
+// Returns:
+// * `null` if the child is still running.
+// * `>=0` normal exit code (non-negative).
+// * `<0` negative signal number that killed the child.
+type alive = !void;
+type procstatus = (alive | i32);
+fn proc_check(pid: i32) procstatus = {
+    let status: i32 = 0;
+    let ret = proc::wait_nohang(pid, &status);
+    if (ret > 0) {
+        // Process has exited - decode WIFEXITED / WIFSIGNALED
+        // Bits 0-6: exit status or signal number
+        // Bit 7: exited normally (0) or signaled (1)
+        if ((status & 0x80) == 0) {
+            // Normal exit: bits 8-15 contain exit code
+            return (status >> 8): procstatus;
+        } else {
+            // Terminated by signal: bits 0-6 contain signum
+            return -(status & 0x7F): procstatus;
+        };
+    };
+    return alive:procstatus;
 };

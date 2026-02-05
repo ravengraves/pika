@@ -3,7 +3,7 @@ use rt;
 
 // Global constants
 const MAX_SIZE: i32 = 100;
-const PI: f64 = 3.14159;
+const MY_PI: f64 = 3.14159;
 
 // Global mutable variable
 let counter: i32 = 0;

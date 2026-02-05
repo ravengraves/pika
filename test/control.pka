@@ -10,7 +10,7 @@ export fn abs(x: i32) i32 = {
 };
 
 // If-else chain
-export fn sign(x: i32) i32 = {
+export fn sgn(x: i32) i32 = {
 	if (x > 0) {
 		return 1;
 	} else if (x < 0) {
@@ -66,7 +66,7 @@ export fn find_first_even(arr: *i32, n: i32) i32 = {
 
 export fn main() void = {
 	let a = abs(-5);
-	let s = sign(-10);
+	let s = sgn(-10);
 	let sum = sum_to(100);
 	let bits = count_bits(255);
 	let day = day_name(3);

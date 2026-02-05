@@ -4,12 +4,16 @@
 
 set -e
 
+CC=clang
 CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wfloat-conversion \
 -Wno-overlength-strings -Wno-unused-function -Wno-unused-variable \
 -Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality \
 -ffunction-sections -fdata-sections -mshstk \
--O0 -ffast-math -march=native -mtune=native -fno-builtin -ffreestanding -nostdlib \
--fno-asynchronous-unwind-tables -fno-unwind-tables -fno-stack-protector -fno-ident \
+-O3 -ffast-math -funroll-loops -ftree-vectorize -march=native -mtune=native \
+-finline-functions \
+-fno-strict-aliasing -fno-builtin \
+-ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
+-fno-stack-protector -fno-ident \
 -Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s"
 
 LIBPK_MODULES=(
@@ -20,6 +24,7 @@ LIBPK_MODULES=(
   stdlib/clock.pka
   stdlib/sys.pka
   stdlib/io.pka
+  stdlib/math.pka
 )
 
 TARGET=""
@@ -42,10 +47,10 @@ TMPFILE=$(mktemp /tmp/compiled-XXXXXX.c)
 cat "${LIBPK_MODULES[@]}" "${INFILES[@]}" | bin/pika2c > "$TMPFILE"
 
 start_ms=$(date +%s%3N)
-clang $CFLAGS -o "$TARGET" "$TMPFILE" runtime/rt.c stdlib/libpk.c
+$CC $CFLAGS -o "$TARGET" "$TMPFILE" runtime/rt.c stdlib/libpk.c
 end_ms=$(date +%s%3N)
 duration=$((end_ms - start_ms))
 
 rm -f "$TMPFILE"
 echo "Built $TARGET"
-echo "Build took ${duration} ms"
+echo "${duration} ms"

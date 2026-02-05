@@ -9,11 +9,11 @@ def RING_FILE_LEN: size = shm::RING_DATA_OFF + RING_CAP;
 def PORT_FILE_LEN: size = 8;
 
 fn ring_path() *[*]u8 = {
-	return strings::toutf8("/tmp/libpk_ring.bin\0"): *[*]u8;
+	return strings::toutf8("/tmp/test_libpka_ring.bin\0"): *[*]u8;
 };
 
 fn port_path() *[*]u8 = {
-	return strings::toutf8("/tmp/libpk_ring.port\0"): *[*]u8;
+	return strings::toutf8("/tmp/test_libpka_ring.port\0"): *[*]u8;
 };
 
 fn ring_write_port_file(port: u16) void = {

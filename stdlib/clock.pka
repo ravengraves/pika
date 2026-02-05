@@ -15,7 +15,7 @@ fn clock_since(start_tick: u64) f64 = {
 
 fn clock_dt(stop_tick: u64, start_tick: u64) f64 = {
 	if (NS_PER_COUNT < 0.0f64) {
-		clock::calibrate(0.01f64);
+		clock::calibrate(0.05f64); // 5ms
 	};
 	if (stop_tick <= start_tick) { return 0.0f64; };
 	let delta = stop_tick - start_tick;
