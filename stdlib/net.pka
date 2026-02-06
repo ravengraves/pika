@@ -39,41 +39,41 @@ fn net_sockaddr_in_init(a: u8, b: u8, c: u8, d: u8, port: u16) net_sockaddr_in =
 		| (c: u32 << 8)
 		| d: u32;
 	return net_sockaddr_in {
-		family = net::AF_INET: u16,
-		port = net::htons(port),
-		addr = net::htonl(ip_host),
+		family = net_AF_INET: u16,
+		port = net_htons(port),
+		addr = net_htonl(ip_host),
 		zero = 0,
 	};
 };
 
 fn net_tcp_listen_local(port: u16, backlog: i32, out_port: *u16) i32 = {
-	let fd = net::socket(net::AF_INET, net::SOCK_STREAM, net::IPPROTO_TCP);
+	let fd = net_socket(net_AF_INET, net_SOCK_STREAM, net_IPPROTO_TCP);
 	if (fd < 0) { return fd; };
-	let addr = net::sockaddr_in_init(127, 0, 0, 1, port);
-	if (net::bind(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
-		net::close(fd);
+	let addr = net_sockaddr_in_init(127, 0, 0, 1, port);
+	if (net_bind(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
+		net_close(fd);
 		return -1;
 	};
-	if (net::listen(fd, backlog) != 0) {
-		net::close(fd);
+	if (net_listen(fd, backlog) != 0) {
+		net_close(fd);
 		return -1;
 	};
 	let alen: net_socklen = size(net_sockaddr_in): net_socklen;
 	let got = addr;
-	if (net::getsockname(fd, &got: *opaque, &alen) != 0) {
-		net::close(fd);
+	if (net_getsockname(fd, &got: *opaque, &alen) != 0) {
+		net_close(fd);
 		return -1;
 	};
-	*out_port = net::ntohs(got.port);
+	*out_port = net_ntohs(got.port);
 	return fd;
 };
 
 fn net_tcp_connect_local(port: u16) i32 = {
-	let fd = net::socket(net::AF_INET, net::SOCK_STREAM, net::IPPROTO_TCP);
+	let fd = net_socket(net_AF_INET, net_SOCK_STREAM, net_IPPROTO_TCP);
 	if (fd < 0) { return fd; };
-	let addr = net::sockaddr_in_init(127, 0, 0, 1, port);
-	if (net::connect(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
-		net::close(fd);
+	let addr = net_sockaddr_in_init(127, 0, 0, 1, port);
+	if (net_connect(fd, &addr: *opaque, size(net_sockaddr_in)) != 0) {
+		net_close(fd);
 		return -1;
 	};
 	return fd;

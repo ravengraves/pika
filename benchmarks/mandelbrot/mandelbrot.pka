@@ -1,0 +1,154 @@
+// mandelbrot.pka - Mandelbrot set benchmark (Benchmarks Game)
+// Plots Mandelbrot set [-1.5-i, 0.5+i] on NxN bitmap.
+// Outputs PBM P4 format to stdout.
+//
+// Processes 4 rows x 8 pixels = 32 pixels at a time.
+// The wider inner loop (k=0..31) gives the compiler more
+// independent work to pack into SIMD and fill execution ports.
+// Batch early-exit: 6 batches of 8 iters + 2 final = 50 total.
+//
+// Change MAND_N for different sizes:
+//   200   -> correctness check (compare output with reference)
+//   16000 -> performance benchmark
+
+use rt;
+use strings;
+
+def MAND_N: i32 = 16000;
+
+export fn main() void = {
+	let n: i32 = MAND_N;
+	let n8: i32 = (n + 7) & -8;
+	let byte_width: i32 = n8 / 8;
+	let inv_n: f64 = 2.0f64 / (n8: f64);
+
+	// Write PBM header
+	bench_write("P4\n");
+	bench_write_i32(n8);
+	bench_write(" ");
+	bench_write_i32(n8);
+	bench_write("\n");
+
+	// 4 row buffers (supports up to N=16000)
+	let rows: [8000]u8 = [0...];
+	let rowp: *[*]u8 = &rows: *[*]u8;
+
+	for (let py: i32 = 0; py < n8; py += 4) {
+		let ci0: f64 = inv_n * ((py + 0): f64) - 1.0f64;
+		let ci1: f64 = inv_n * ((py + 1): f64) - 1.0f64;
+		let ci2: f64 = inv_n * ((py + 2): f64) - 1.0f64;
+		let ci3: f64 = inv_n * ((py + 3): f64) - 1.0f64;
+
+		for (let xbyte: i32 = 0; xbyte < byte_width; xbyte += 1) {
+			// 32 pixels: 4 rows x 8 columns
+			let cr: [32]f64 = [0...];
+			let zr: [32]f64 = [0...];
+			let zi: [32]f64 = [0...];
+			let ci: [32]f64 = [0...];
+
+			let crp: *[*]f64 = &cr: *[*]f64;
+			let zrp: *[*]f64 = &zr: *[*]f64;
+			let zip: *[*]f64 = &zi: *[*]f64;
+			let cip: *[*]f64 = &ci: *[*]f64;
+
+			// Init: same cr for all 4 rows, different ci per row
+			for (let k: i32 = 0; k < 8; k += 1) {
+				let px: i32 = xbyte * 8 + k;
+				let c: f64 = inv_n * (px: f64) - 1.5f64;
+				crp[(k +  0): size] = c;
+				crp[(k +  8): size] = c;
+				crp[(k + 16): size] = c;
+				crp[(k + 24): size] = c;
+				zrp[(k +  0): size] = c;
+				zrp[(k +  8): size] = c;
+				zrp[(k + 16): size] = c;
+				zrp[(k + 24): size] = c;
+				zip[(k +  0): size] = ci0;
+				zip[(k +  8): size] = ci1;
+				zip[(k + 16): size] = ci2;
+				zip[(k + 24): size] = ci3;
+				cip[(k +  0): size] = ci0;
+				cip[(k +  8): size] = ci1;
+				cip[(k + 16): size] = ci2;
+				cip[(k + 24): size] = ci3;
+			};
+
+			let escaped_all: bool = false;
+
+			// 6 batches of 8 iterations = 48
+			for (let j: i32 = 0; j < 6; j += 1) {
+				for (let iter: i32 = 0; iter < 8; iter += 1) {
+					for (let k: i32 = 0; k < 32; k += 1) {
+						let zr2: f64 = zrp[k: size] * zrp[k: size];
+						let zi2: f64 = zip[k: size] * zip[k: size];
+						zip[k: size] = 2.0f64 * zrp[k: size] * zip[k: size] + cip[k: size];
+						zrp[k: size] = zr2 - zi2 + crp[k: size];
+					};
+				};
+
+				let all_out: bool = true;
+				for (let k: i32 = 0; k < 32; k += 1) {
+					if (zrp[k: size] * zrp[k: size] + zip[k: size] * zip[k: size] <= 4.0f64) {
+						all_out = false;
+					};
+				};
+				if (all_out) {
+					escaped_all = true;
+					break;
+				};
+			};
+
+			if (!escaped_all) {
+				// 2 final iterations (48+2=50)
+				for (let fin: i32 = 0; fin < 2; fin += 1) {
+					for (let p: i32 = 0; p < 32; p += 1) {
+						let r2: f64 = zrp[p: size] * zrp[p: size];
+						let i2: f64 = zip[p: size] * zip[p: size];
+						zip[p: size] = 2.0f64 * zrp[p: size] * zip[p: size] + cip[p: size];
+						zrp[p: size] = r2 - i2 + crp[p: size];
+					};
+				};
+			};
+
+			// Extract 4 bytes (one per row), MSB = leftmost pixel
+			let b0: i32 = 0;
+			let b1: i32 = 0;
+			let b2: i32 = 0;
+			let b3: i32 = 0;
+
+			if (!escaped_all) {
+				for (let p: i32 = 0; p < 8; p += 1) {
+					if (zrp[(p + 0): size] * zrp[(p + 0): size] + zip[(p + 0): size] * zip[(p + 0): size] <= 4.0f64) {
+						b0 = b0 | (128 >> p);
+					};
+				};
+				for (let q: i32 = 0; q < 8; q += 1) {
+					if (zrp[(q + 8): size] * zrp[(q + 8): size] + zip[(q + 8): size] * zip[(q + 8): size] <= 4.0f64) {
+						b1 = b1 | (128 >> q);
+					};
+				};
+				for (let m: i32 = 0; m < 8; m += 1) {
+					if (zrp[(m + 16): size] * zrp[(m + 16): size] + zip[(m + 16): size] * zip[(m + 16): size] <= 4.0f64) {
+						b2 = b2 | (128 >> m);
+					};
+				};
+				for (let w: i32 = 0; w < 8; w += 1) {
+					if (zrp[(w + 24): size] * zrp[(w + 24): size] + zip[(w + 24): size] * zip[(w + 24): size] <= 4.0f64) {
+						b3 = b3 | (128 >> w);
+					};
+				};
+			};
+
+			rowp[(0 * byte_width + xbyte): size] = b0: u8;
+			rowp[(1 * byte_width + xbyte): size] = b1: u8;
+			rowp[(2 * byte_width + xbyte): size] = b2: u8;
+			rowp[(3 * byte_width + xbyte): size] = b3: u8;
+		};
+
+		// Write 4 rows
+		rt::write(1, (rowp + (0 * byte_width): size): *opaque, byte_width: size);
+		rt::write(1, (rowp + (1 * byte_width): size): *opaque, byte_width: size);
+		rt::write(1, (rowp + (2 * byte_width): size): *opaque, byte_width: size);
+		rt::write(1, (rowp + (3 * byte_width): size): *opaque, byte_width: size);
+	};
+};

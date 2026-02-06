@@ -58,15 +58,15 @@ def file_SEEK_CUR: i32 = 1;
 def file_SEEK_END: i32 = 2;
 
 fn file_seek(fd: i32, off: i64, whence: i32) i64 = {
-	return file::lseek(fd, off, whence);
+	return file_lseek(fd, off, whence);
 };
 
 fn file_tell(fd: i32) i64 = {
-	return file::lseek(fd, 0, file::SEEK_CUR);
+	return file_lseek(fd, 0, file_SEEK_CUR);
 };
 
 fn file_rewind(fd: i32) i64 = {
-	return file::lseek(fd, 0, file::SEEK_SET);
+	return file_lseek(fd, 0, file_SEEK_SET);
 };
 
 @symbol("pk_fstatat") fn file_fstatat(dirfd: i32, path: file_cstr,
@@ -85,19 +85,19 @@ def file_AT_SYMLINK_NOFOLLOW: i32 = 0x100;
 def file_AT_REMOVEDIR: i32 = 0x200;
 
 fn file_open_ro(path: file_cstr) i32 = {
-	return file::open(path, file::O_RDONLY, 0);
+	return file_open(path, file_O_RDONLY, 0);
 };
 
 fn file_open_rw(path: file_cstr) i32 = {
-	return file::open(path, file::O_RDWR, 0);
+	return file_open(path, file_O_RDWR, 0);
 };
 
 fn file_open_rw_create(path: file_cstr, mode: u32) i32 = {
-	return file::open(path, file::O_CREAT | file::O_RDWR, mode);
+	return file_open(path, file_O_CREAT | file_O_RDWR, mode);
 };
 
 fn file_open_rw_trunc(path: file_cstr, mode: u32) i32 = {
-	return file::open(path, file::O_CREAT | file::O_TRUNC | file::O_RDWR, mode);
+	return file_open(path, file_O_CREAT | file_O_TRUNC | file_O_RDWR, mode);
 };
 
 fn file_write_all(fd: i32, buf: *opaque, count: size) i64 = {
@@ -105,7 +105,7 @@ fn file_write_all(fd: i32, buf: *opaque, count: size) i64 = {
 	let left: size = count;
 	let off: size = 0;
 	for (left > 0) {
-		let wrote = file::write(fd, &p[off]: *opaque, left);
+		let wrote = file_write(fd, &p[off]: *opaque, left);
 		if (wrote <= 0) { return wrote; };
 		off += wrote: size;
 		left -= wrote: size;
@@ -118,7 +118,7 @@ fn file_read_exact(fd: i32, buf: *opaque, count: size) i64 = {
 	let left: size = count;
 	let off: size = 0;
 	for (left > 0) {
-		let got = file::read(fd, &p[off]: *opaque, left);
+		let got = file_read(fd, &p[off]: *opaque, left);
 		if (got <= 0) { return count: i64 - left: i64; };
 		off += got: size;
 		left -= got: size;
@@ -127,11 +127,11 @@ fn file_read_exact(fd: i32, buf: *opaque, count: size) i64 = {
 };
 
 fn file_stat_path(path: file_cstr, buf: *file_stat) i32 = {
-	return file::fstatat(file::AT_FDCWD, path, buf, 0);
+	return file_fstatat(file_AT_FDCWD, path, buf, 0);
 };
 
 fn file_lstat_path(path: file_cstr, buf: *file_stat) i32 = {
-	return file::fstatat(file::AT_FDCWD, path, buf, file::AT_SYMLINK_NOFOLLOW);
+	return file_fstatat(file_AT_FDCWD, path, buf, file_AT_SYMLINK_NOFOLLOW);
 };
 
 fn file_exists(path: file_cstr) bool = {
@@ -143,7 +143,7 @@ fn file_exists(path: file_cstr) bool = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	return file::stat_path(path, &st) == 0;
+	return file_stat_path(path, &st) == 0;
 };
 
 fn file_isfile(path: file_cstr) bool = {
@@ -155,8 +155,8 @@ fn file_isfile(path: file_cstr) bool = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	if (file::stat_path(path, &st) != 0) { return false; };
-	return (st.st_mode & file::S_IFMT) == file::S_IFREG;
+	if (file_stat_path(path, &st) != 0) { return false; };
+	return (st.st_mode & file_S_IFMT) == file_S_IFREG;
 };
 
 fn file_isdir(path: file_cstr) bool = {
@@ -168,8 +168,8 @@ fn file_isdir(path: file_cstr) bool = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	if (file::stat_path(path, &st) != 0) { return false; };
-	return (st.st_mode & file::S_IFMT) == file::S_IFDIR;
+	if (file_stat_path(path, &st) != 0) { return false; };
+	return (st.st_mode & file_S_IFMT) == file_S_IFDIR;
 };
 
 fn file_islink(path: file_cstr) bool = {
@@ -181,8 +181,8 @@ fn file_islink(path: file_cstr) bool = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	if (file::lstat_path(path, &st) != 0) { return false; };
-	return (st.st_mode & file::S_IFMT) == file::S_IFLNK;
+	if (file_lstat_path(path, &st) != 0) { return false; };
+	return (st.st_mode & file_S_IFMT) == file_S_IFLNK;
 };
 
 fn file_size(path: file_cstr) i64 = {
@@ -194,7 +194,7 @@ fn file_size(path: file_cstr) i64 = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	if (file::stat_path(path, &st) != 0) { return -1; };
+	if (file_stat_path(path, &st) != 0) { return -1; };
 	return st.st_size;
 };
 
@@ -207,28 +207,28 @@ fn file_size_fd(fd: i32) i64 = {
 		st_ctime = 0, st_ctime_ns = 0,
 		__unused0 = 0, __unused1 = 0, __unused2 = 0,
 	};
-	if (file::fstat(fd, &st) != 0) { return -1; };
+	if (file_fstat(fd, &st) != 0) { return -1; };
 	return st.st_size;
 };
 
 fn file_mkdir(path: file_cstr, mode: u32) i32 = {
-	return file::mkdirat(file::AT_FDCWD, path, mode);
+	return file_mkdirat(file_AT_FDCWD, path, mode);
 };
 
 fn file_rmdir(path: file_cstr) i32 = {
-	return file::unlinkat(file::AT_FDCWD, path, file::AT_REMOVEDIR);
+	return file_unlinkat(file_AT_FDCWD, path, file_AT_REMOVEDIR);
 };
 
 fn file_rm(path: file_cstr) i32 = {
-	return file::unlinkat(file::AT_FDCWD, path, 0);
+	return file_unlinkat(file_AT_FDCWD, path, 0);
 };
 
 fn file_opendir(path: file_cstr) i32 = {
-	file::readdir_reset();
-	return file::open(path, file::O_RDONLY | file::O_DIRECTORY, 0);
+	file_readdir_reset();
+	return file_open(path, file_O_RDONLY | file_O_DIRECTORY, 0);
 };
 
 fn file_closedir(fd: i32) i32 = {
-	file::readdir_reset();
-	return file::close(fd);
+	file_readdir_reset();
+	return file_close(fd);
 };

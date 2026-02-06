@@ -15,17 +15,17 @@ def io_POLLNVAL: i16 = 0x0020;
 
 fn io_poll_one(fd: i32, events: i16, timeout_ms: i32) i16 = {
 	let pfd = io_pollfd { fd = fd, events = events, revents = 0 };
-	let ret = io::poll(&pfd, 1, timeout_ms);
+	let ret = io_poll(&pfd, 1, timeout_ms);
 	if (ret <= 0) { return 0; };
 	return pfd.revents;
 };
 
 fn io_wait_readable(fd: i32, timeout_ms: i32) bool = {
-	let revents = io::poll_one(fd, io::POLLIN, timeout_ms);
-	return (revents & io::POLLIN) != 0;
+	let revents = io_poll_one(fd, io_POLLIN, timeout_ms);
+	return (revents & io_POLLIN) != 0;
 };
 
 fn io_wait_writable(fd: i32, timeout_ms: i32) bool = {
-	let revents = io::poll_one(fd, io::POLLOUT, timeout_ms);
-	return (revents & io::POLLOUT) != 0;
+	let revents = io_poll_one(fd, io_POLLOUT, timeout_ms);
+	return (revents & io_POLLOUT) != 0;
 };

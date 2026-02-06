@@ -1,0 +1,386 @@
+// memspeed.pka - Memory Speed Benchmark for Pika
+// Adapted from Roy Longbottom's MemSpd2K Benchmark
+// Tests memory bandwidth through L1, L2, L3, and RAM
+// using f64, f32, and i32 operations.
+//
+// Three operations per type:
+//   s += x[m]*y[m]   (dot product / accumulate)
+//   x[m] = x[m]+y[m] (vector add)
+//   x[m] = y[m]      (copy)
+
+use rt;
+use strings;
+
+// 4MB per array for f64 (524288 * 8 bytes)
+// 4MB per array for f32/i32 (1048576 * 4 bytes)
+def MEMD_MAX: i32 = 524288;
+def MEMS_MAX: i32 = 1048576;
+
+let mem_xd: [524288]f64 = [0...];
+let mem_yd: [524288]f64 = [0...];
+let mem_xs: [1048576]f32 = [0...];
+let mem_ys: [1048576]f32 = [0...];
+let mem_xi: [1048576]i32 = [0...];
+let mem_yi: [1048576]i32 = [0...];
+
+def MEM_MIN_SECS: f64 = 0.1f64;
+
+// f64 element counts for each test size
+// Memory per pair of f64 arrays = kd * 16 bytes
+//   250 -> 4KB, 500 -> 8KB, 1000 -> 16KB, ... 256000 -> 4MB
+let mem_sizes: [11]i32 = [250, 500, 1000, 2000, 4000, 8000,
+	16000, 32000, 64000, 128000, 256000];
+def MEM_NSIZES: i32 = 11;
+
+// Results: 11 sizes * 9 tests
+let mem_res: [99]f64 = [0...];
+
+fn mem_recal(elapsed: f64, n: i32) i32 = {
+	if (elapsed < MEM_MIN_SECS / 8.0f64) {
+		return n * 10;
+	};
+	return (MEM_MIN_SECS * 1.25f64 / elapsed * (n: f64) + 1.0f64): i32;
+};
+
+// === f64 dot product: dsum += xd[m]*yd[m] ===
+fn mem_dp_dot(kd: i32) f64 = {
+	for (let m = 0z; m < (kd: size); m += 1) {
+		mem_xd[m] = 1.0f64;
+		mem_yd[m] = 1.0f64;
+	};
+	let nn: i32 = 6400000 / kd;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let dsum: f64 = 0.0f64;
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < kd; m += 1) {
+				dsum += mem_xd[m: size] * mem_yd[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		mem_xd[0] = dsum * 1.0e-20f64;
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (kd: f64) * (nn: f64) * 16.0f64 / (1000000.0f64 * secs);
+};
+
+// === f64 add: xd[m] += yd[m] ===
+fn mem_dp_add(kd: i32) f64 = {
+	for (let m = 0z; m < (kd: size); m += 1) {
+		mem_xd[m] = 0.0f64;
+		mem_yd[m] = 1.0f64;
+	};
+	let nn: i32 = 6400000 / kd;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		for (let m = 0z; m < (kd: size); m += 1) {
+			mem_xd[m] = 0.0f64;
+		};
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < kd; m += 1) {
+				mem_xd[m: size] = mem_xd[m: size] + mem_yd[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (kd: f64) * (nn: f64) * 16.0f64 / (1000000.0f64 * secs);
+};
+
+// === f64 copy: xd[m] = yd[m] ===
+fn mem_dp_cpy(kd: i32) f64 = {
+	for (let m = 0z; m < (kd: size); m += 1) {
+		mem_xd[m] = 0.0f64;
+		mem_yd[m] = (m: f64);
+	};
+	let nn: i32 = 6400000 / kd;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < kd; m += 1) {
+				mem_xd[m: size] = mem_yd[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (kd: f64) * (nn: f64) * 16.0f64 / (1000000.0f64 * secs);
+};
+
+// === f32 dot product: ssum += xs[m]*ys[m] ===
+fn mem_sp_dot(ks: i32) f64 = {
+	for (let m = 0z; m < (ks: size); m += 1) {
+		mem_xs[m] = 1.0;
+		mem_ys[m] = 1.0;
+	};
+	let nn: i32 = 6400000 / ks;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let ssum: f32 = 0.0;
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ks; m += 1) {
+				ssum += mem_xs[m: size] * mem_ys[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		mem_xs[0] = ssum * 1.0e-20f32;
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ks: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === f32 add: xs[m] += ys[m] ===
+fn mem_sp_add(ks: i32) f64 = {
+	for (let m = 0z; m < (ks: size); m += 1) {
+		mem_xs[m] = 0.0;
+		mem_ys[m] = 1.0;
+	};
+	let nn: i32 = 6400000 / ks;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		for (let m = 0z; m < (ks: size); m += 1) {
+			mem_xs[m] = 0.0;
+		};
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ks; m += 1) {
+				mem_xs[m: size] = mem_xs[m: size] + mem_ys[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ks: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === f32 copy: xs[m] = ys[m] ===
+fn mem_sp_cpy(ks: i32) f64 = {
+	for (let m = 0z; m < (ks: size); m += 1) {
+		mem_xs[m] = 0.0;
+		mem_ys[m] = (m: f32);
+	};
+	let nn: i32 = 6400000 / ks;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ks; m += 1) {
+				mem_xs[m: size] = mem_ys[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ks: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === i32 accumulate: isum += xi[m] + yi[m] ===
+fn mem_int_dot(ki: i32) f64 = {
+	for (let m = 0z; m < (ki: size); m += 1) {
+		mem_xi[m] = 0;
+		mem_yi[m] = 0;
+	};
+	mem_yi[(ki - 1): size] = 1;
+	let nn: i32 = 6400000 / ki;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let isum: i32 = 0;
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ki; m += 1) {
+				isum += mem_xi[m: size] + mem_yi[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		mem_xi[0] = isum;
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ki: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === i32 add: xi[m] += yi[m] ===
+fn mem_int_add(ki: i32) f64 = {
+	for (let m = 0z; m < (ki: size); m += 1) {
+		mem_xi[m] = 0;
+		mem_yi[m] = 1;
+	};
+	let nn: i32 = 6400000 / ki;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		for (let m = 0z; m < (ki: size); m += 1) {
+			mem_xi[m] = 0;
+		};
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ki; m += 1) {
+				mem_xi[m: size] = mem_xi[m: size] + mem_yi[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ki: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === i32 copy: xi[m] = yi[m] ===
+fn mem_int_cpy(ki: i32) f64 = {
+	for (let m = 0z; m < (ki: size); m += 1) {
+		mem_xi[m] = 0;
+		mem_yi[m] = m: i32;
+	};
+	let nn: i32 = 6400000 / ki;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			for (let m: i32 = 0; m < ki; m += 1) {
+				mem_xi[m: size] = mem_yi[m: size];
+			};
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (ki: f64) * (nn: f64) * 8.0f64 / (1000000.0f64 * secs);
+};
+
+// === rt::memcpy: bulk copy via runtime memcpy ===
+fn mem_rt_cpy(kd: i32) f64 = {
+	for (let m = 0z; m < (kd: size); m += 1) {
+		mem_xd[m] = 0.0f64;
+		mem_yd[m] = (m: f64);
+	};
+	let bytes: size = (kd: size) * 8;
+	let nn: i32 = 6400000 / kd;
+	if (nn < 1) { nn = 1; };
+	let secs: f64 = 0.0f64;
+	for (true) {
+		let ts = bench_time_ns();
+		for (let i: i32 = 0; i < nn; i += 1) {
+			rt::memcpy(&mem_xd: *opaque, &mem_yd: *opaque, bytes);
+			benchmark_compiler_barrier();
+		};
+		let te = bench_time_ns();
+		secs = bench_elapsed_s(ts, te);
+		if (secs >= MEM_MIN_SECS) { break; };
+		nn = mem_recal(secs, nn);
+	};
+	return (kd: f64) * (nn: f64) * 16.0f64 / (1000000.0f64 * secs);
+};
+
+fn mem_write_mb(val: f64) void = {
+	// Right-justify in 7 chars
+	if (val < 10.0f64) {
+		bench_write("      ");
+	} else if (val < 100.0f64) {
+		bench_write("     ");
+	} else if (val < 1000.0f64) {
+		bench_write("    ");
+	} else if (val < 10000.0f64) {
+		bench_write("   ");
+	} else if (val < 100000.0f64) {
+		bench_write("  ");
+	} else {
+		bench_write(" ");
+	};
+	bench_write_f64(val, 0);
+};
+
+export fn main() void = {
+	bench_write("Pika Memory Speed Benchmark\n");
+	bench_write("Adapted from Roy Longbottom's MemSpd2K\n");
+	bench_write("Minimum ");
+	bench_write_f64(MEM_MIN_SECS, 1);
+	bench_write(" seconds per test\n\n");
+
+	bench_write("Memory  s=s+x[m]*y[m] Int+   x[m]=x[m]+y[m]       x[m]=y[m]        memcpy\n");
+	bench_write("KBytes  Dble   Sngl   Int    Dble   Sngl   Int    Dble   Sngl   Int    f64\n");
+	bench_write(" Used   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S  MB/S\n\n");
+
+	for (let j: i32 = 0; j < MEM_NSIZES; j += 1) {
+		let kd = mem_sizes[j: size];
+		let ks = kd * 2;
+		let ki = kd * 2;
+		let mem_kb = kd * 16 / 1000;
+
+		// Run all 9 tests for this memory size
+		let r0 = mem_dp_dot(kd);
+		let r1 = mem_sp_dot(ks);
+		let r2 = mem_int_dot(ki);
+		let r3 = mem_dp_add(kd);
+		let r4 = mem_sp_add(ks);
+		let r5 = mem_int_add(ki);
+		let r6 = mem_dp_cpy(kd);
+		let r7 = mem_sp_cpy(ks);
+		let r8 = mem_int_cpy(ki);
+		let r9 = mem_rt_cpy(kd);
+
+		// Store results
+		mem_res[(j * 9): size] = r0;
+		mem_res[(j * 9 + 1): size] = r1;
+		mem_res[(j * 9 + 2): size] = r2;
+		mem_res[(j * 9 + 3): size] = r3;
+		mem_res[(j * 9 + 4): size] = r4;
+		mem_res[(j * 9 + 5): size] = r5;
+		mem_res[(j * 9 + 6): size] = r6;
+		mem_res[(j * 9 + 7): size] = r7;
+		mem_res[(j * 9 + 8): size] = r8;
+
+		// Print row
+		if (mem_kb < 10) {
+			bench_write("    ");
+		} else if (mem_kb < 100) {
+			bench_write("   ");
+		} else if (mem_kb < 1000) {
+			bench_write("  ");
+		} else if (mem_kb < 10000) {
+			bench_write(" ");
+		};
+		bench_write_i32(mem_kb);
+
+		mem_write_mb(r0);
+		mem_write_mb(r1);
+		mem_write_mb(r2);
+		mem_write_mb(r3);
+		mem_write_mb(r4);
+		mem_write_mb(r5);
+		mem_write_mb(r6);
+		mem_write_mb(r7);
+		mem_write_mb(r8);
+		mem_write_mb(r9);
+		bench_nl();
+	};
+
+	bench_nl();
+	bench_write("Done.\n");
+};

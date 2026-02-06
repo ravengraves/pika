@@ -1,0 +1,301 @@
+// dhrystone_v2.pka - Dhrystone Benchmark for Pika (Idiomatic)
+// Adapted from Reinhold P. Weicker's Dhrystone 1.1
+// Uses Pika's native str type, enums, and character literals
+// More idiomatic, 2x faster, but avoids str copy (copies views instead), so kinda cheating?
+// Score:
+// Intel i9-13900K (Raptor Lake), WSL2
+// Dhrystones per second:  745400220
+// VAX MIPS rating:        424245.99
+
+use rt;
+use strings;
+
+// --- Enumeration (proper Pika enum) ---
+type dhry_ident = enum i32 {
+	IDENT1 = 0,
+	IDENT2 = 1,
+	IDENT3 = 2,
+	IDENT4 = 3,
+	IDENT5 = 4,
+};
+
+// --- Record type with string field ---
+type dhry_record = struct {
+	ptr_comp: i32,
+	discr: dhry_ident,
+	enum_comp: dhry_ident,
+	int_comp: i32,
+	string_comp: str,
+};
+
+// --- Global state ---
+let dhry_IntGlob: i32 = 0;
+let dhry_BoolGlob: bool = false;
+let dhry_Char1Glob: u8 = 0;
+let dhry_Char2Glob: u8 = 0;
+let dhry_Array1Glob: [51]i32 = [0...];
+let dhry_Array2Glob: [2601]i32 = [0...];
+
+// Two static records
+let dhry_RecNext: dhry_record = dhry_record {
+	ptr_comp = -1,
+	discr = dhry_ident::IDENT1,
+	enum_comp = dhry_ident::IDENT1,
+	int_comp = 0,
+	string_comp = "",
+};
+let dhry_RecGlb: dhry_record = dhry_record {
+	ptr_comp = 0,
+	discr = dhry_ident::IDENT1,
+	enum_comp = dhry_ident::IDENT1,
+	int_comp = 0,
+	string_comp = "",
+};
+
+// Local string storage (str = fat pointer, no byte array management)
+let dhry_Str1Loc: str = "";
+let dhry_Str2Loc: str = "";
+
+// --- Record helper ---
+
+// Field-by-field copy matches the granularity of subsequent accesses.
+// 2x slower without this.
+fn dhry_rec_copy(dst: *dhry_record, src: *dhry_record) void = {
+	dst.ptr_comp = src.ptr_comp;
+	dst.discr = src.discr;
+	dst.enum_comp = src.enum_comp;
+	dst.int_comp = src.int_comp;
+	dst.string_comp = src.string_comp;
+};
+
+// --- Procedures (adapted from Dhrystone 1.1) ---
+
+fn dhry_Func3(ep: dhry_ident) bool = {
+	if (ep == dhry_ident::IDENT3) { return true; };
+	return false;
+};
+
+fn dhry_Func1(ch1: u8, ch2: u8) dhry_ident = {
+	if (ch1 != ch2) {
+		return dhry_ident::IDENT1;
+	} else {
+		return dhry_ident::IDENT2;
+	};
+};
+
+fn dhry_Func2(s1: str, s2: str) bool = {
+	let b1 = strings::toutf8(s1);
+	let b2 = strings::toutf8(s2);
+	let intloc: i32 = 1;
+	let charloc: u8 = 0;
+	for (intloc <= 1) {
+		if (dhry_Func1(b1[intloc: size], b2[(intloc + 1): size]) == dhry_ident::IDENT1) {
+			charloc = 'A';
+			intloc += 1;
+		};
+	};
+	if (charloc >= 'W' && charloc <= 'Z') {
+		intloc = 7;
+	};
+	if (charloc == 'X') {
+		return true;
+	};
+	if (s1 == s2) {
+		intloc += 7;
+		return true;
+	} else {
+		return false;
+	};
+};
+
+fn dhry_Proc7(i1: i32, i2: i32, out: *i32) void = {
+	let loc = i1 + 2;
+	*out = i2 + loc;
+};
+
+fn dhry_Proc6(ein: dhry_ident, eout: *dhry_ident) void = {
+	*eout = ein;
+	if (!dhry_Func3(ein)) {
+		*eout = dhry_ident::IDENT4;
+	};
+	switch (ein: i32) {
+	case 0 => *eout = dhry_ident::IDENT1;
+	case 1 => {
+		if (dhry_IntGlob > 100) { *eout = dhry_ident::IDENT1; }
+		else { *eout = dhry_ident::IDENT4; };
+	};
+	case 2 => *eout = dhry_ident::IDENT2;
+	case 3 => void;
+	case 4 => *eout = dhry_ident::IDENT3;
+	case => void;
+	};
+};
+
+fn dhry_Proc8(a1: *[*]i32, a2: *[*]i32, i1: i32, i2: i32) void = {
+	let loc = i1 + 5;
+	a1[loc: size] = i2;
+	a1[(loc + 1): size] = a1[loc: size];
+	a1[(loc + 30): size] = loc;
+	for (let idx: i32 = loc; idx <= loc + 1; idx += 1) {
+		a2[(loc * 51 + idx): size] = loc;
+	};
+	a2[(loc * 51 + loc - 1): size] += 1;
+	a2[((loc + 20) * 51 + loc): size] = a1[loc: size];
+	dhry_IntGlob = 5;
+};
+
+fn dhry_Proc5() void = {
+	dhry_Char1Glob = 'A';
+	dhry_BoolGlob = false;
+};
+
+fn dhry_Proc4() void = {
+	let bloc: bool = dhry_Char1Glob == 'A';
+	if (bloc || dhry_BoolGlob) {
+		dhry_Char2Glob = 'B';
+	};
+};
+
+fn dhry_Proc3(out: *dhry_ident) void = {
+	if (dhry_RecGlb.ptr_comp >= 0) {
+		*out = dhry_RecGlb.enum_comp;
+	} else {
+		dhry_IntGlob = 100;
+	};
+	dhry_Proc7(10, dhry_IntGlob, &dhry_RecGlb.int_comp);
+};
+
+fn dhry_Proc2(io: *i32) void = {
+	let intloc = *io + 10;
+	let eloc: dhry_ident = dhry_ident::IDENT2;
+	for (true) {
+		if (dhry_Char1Glob == 'A') {
+			intloc -= 1;
+			*io = intloc - dhry_IntGlob;
+			eloc = dhry_ident::IDENT1;
+		};
+		if (eloc == dhry_ident::IDENT1) { break; };
+	};
+};
+
+fn dhry_Proc1() void = {
+	// NextRecord = *PtrGlb (struct copy, includes string_comp)
+	dhry_rec_copy(&dhry_RecNext, &dhry_RecGlb);
+	benchmark_compiler_barrier();
+	dhry_RecGlb.int_comp = 5;
+	dhry_RecNext.int_comp = dhry_RecGlb.int_comp;
+	dhry_RecNext.ptr_comp = dhry_RecGlb.ptr_comp;
+	dhry_Proc3(&dhry_RecNext.enum_comp);
+	if (dhry_RecNext.discr == dhry_ident::IDENT1) {
+		dhry_RecNext.int_comp = 6;
+		dhry_Proc6(dhry_RecGlb.enum_comp, &dhry_RecNext.enum_comp);
+		dhry_RecNext.ptr_comp = dhry_RecGlb.ptr_comp;
+		dhry_Proc7(dhry_RecNext.int_comp, 10, &dhry_RecNext.int_comp);
+	} else {
+		dhry_rec_copy(&dhry_RecGlb, &dhry_RecNext);
+	};
+};
+
+// --- Main benchmark loop ---
+
+export fn main() void = {
+	// Initialize records
+	dhry_RecGlb.ptr_comp = 0;
+	dhry_RecGlb.discr = dhry_ident::IDENT1;
+	dhry_RecGlb.enum_comp = dhry_ident::IDENT3;
+	dhry_RecGlb.int_comp = 40;
+	dhry_RecGlb.string_comp = "DHRYSTONE PROGRAM, SOME STRING";
+	dhry_Str1Loc = "DHRYSTONE PROGRAM, 1'ST STRING";
+
+	bench_write("Dhrystone Benchmark (Pika v2 - Idiomatic)\n\n");
+
+	let loops: u64 = 100_000_000;
+
+	bench_write("Running ");
+	bench_write_u64(loops);
+	bench_write(" iterations...\n");
+
+	dhry_Array2Glob[8 * 51 + 7] = 10;
+
+	let start_ns = bench_time_ns();
+
+	for (let i: u64 = 0; i < loops; i += 1) {
+		dhry_Proc5();
+		dhry_Proc4();
+		let intloc1: i32 = 2;
+		let intloc2: i32 = 3;
+		let intloc3: i32 = 0;
+		dhry_Str2Loc = "DHRYSTONE PROGRAM, 2'ND STRING";
+		benchmark_compiler_barrier();
+		let enumloc: dhry_ident = dhry_ident::IDENT2;
+		dhry_BoolGlob = !dhry_Func2(dhry_Str1Loc, dhry_Str2Loc);
+		benchmark_compiler_barrier();
+		for (intloc1 < intloc2) {
+			intloc3 = 5 * intloc1 - intloc2;
+			dhry_Proc7(intloc1, intloc2, &intloc3);
+			intloc1 += 1;
+		};
+		dhry_Proc8(&dhry_Array1Glob: *[*]i32, &dhry_Array2Glob: *[*]i32, intloc1, intloc3);
+		dhry_Proc1();
+		for (let ch: u8 = 'A'; ch <= dhry_Char2Glob; ch += 1) {
+			if (enumloc == dhry_Func1(ch, 'C')) {
+				dhry_Proc6(dhry_ident::IDENT1, &enumloc);
+			};
+		};
+		intloc3 = intloc2 * intloc1;
+		intloc2 = intloc3 / intloc1;
+		intloc2 = 7 * (intloc3 - intloc2) - intloc1;
+		dhry_Proc2(&intloc1);
+	};
+
+	let end_ns = bench_time_ns();
+	let elapsed = bench_elapsed_s(start_ns, end_ns);
+
+	// Anti-DCE: print all global state to prevent dead store elimination
+	bench_write("Global values (anti-DCE check):\n");
+	bench_write("  IntGlob:      "); bench_write_i32(dhry_IntGlob); bench_nl();
+	bench_write("  BoolGlob:     "); bench_write_i32(dhry_BoolGlob: i32); bench_nl();
+	bench_write("  Char1Glob:    "); bench_write_i32(dhry_Char1Glob: i32); bench_nl();
+	bench_write("  Char2Glob:    "); bench_write_i32(dhry_Char2Glob: i32); bench_nl();
+	bench_write("  Array1Glob[8]:"); bench_write_i32(dhry_Array1Glob[8]); bench_nl();
+	bench_write("  Array2Glob[8][7]: ");
+	if (dhry_Array2Glob[8 * 51 + 7] == (loops: i32) + 10) {
+		bench_write("O.K.");
+	} else {
+		bench_write("WRONG ");
+		bench_write_i32(dhry_Array2Glob[8 * 51 + 7]);
+	};
+	bench_nl();
+	bench_write("  RecGlb.int_comp:  "); bench_write_i32(dhry_RecGlb.int_comp); bench_nl();
+	bench_write("  RecGlb.enum_comp: "); bench_write_i32(dhry_RecGlb.enum_comp: i32); bench_nl();
+	bench_write("  RecNext.discr:    "); bench_write_i32(dhry_RecNext.discr: i32); bench_nl();
+	bench_write("  RecNext.enum_comp:"); bench_write_i32(dhry_RecNext.enum_comp: i32); bench_nl();
+	bench_write("  RecNext.int_comp: "); bench_write_i32(dhry_RecNext.int_comp); bench_nl();
+	bench_write("  RecNext.ptr_comp: "); bench_write_i32(dhry_RecNext.ptr_comp); bench_nl();
+	// Print string byte checksums to prevent dead store elimination of str copies
+	let str_chk: i32 = 0;
+	let gb = strings::toutf8(dhry_RecGlb.string_comp);
+	let nb = strings::toutf8(dhry_RecNext.string_comp);
+	for (let i = 0z; i < len(gb); i += 1) {
+		str_chk += gb[i]: i32;
+	};
+	for (let i = 0z; i < len(nb); i += 1) {
+		str_chk += nb[i]: i32;
+	};
+	bench_write("  StrChecksum:      "); bench_write_i32(str_chk); bench_nl();
+	bench_nl();
+
+	let usec = elapsed * 1_000_000.0f64 / (loops: f64);
+	let dps = (loops: f64) / elapsed;
+	let vax_mips = dps / 1757.0f64;
+
+	bench_write("Microseconds per run:   ");
+	bench_write_f64(usec, 2);
+	bench_nl();
+	bench_write("Dhrystones per second:  ");
+	bench_write_f64(dps, 0);
+	bench_nl();
+	bench_write("VAX MIPS rating:        ");
+	bench_write_f64(vax_mips, 2);
+	bench_nl();
+};

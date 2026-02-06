@@ -31,11 +31,11 @@ def proc_PR_SET_PDEATHSIG: i32 = 1;
 @symbol("pk_wait4") fn proc_wait4(pid: i32, status: *i32, options: i32) i32;
 
 fn proc_wait(pid: i32, status: *i32) i32 = {
-	return proc::wait4(pid, status, 0);
+	return proc_wait4(pid, status, 0);
 };
 
 fn proc_wait_nohang(pid: i32, status: *i32) i32 = {
-	return proc::wait4(pid, status, proc::WNOHANG);
+	return proc_wait4(pid, status, proc_WNOHANG);
 };
 
 @symbol("pk_spawn") fn proc_spawn(
@@ -47,18 +47,18 @@ fn proc_wait_nohang(pid: i32, status: *i32) i32 = {
 fn proc_spawn_simple(path: proc_cstr) i32 = {
 	let argv: [2]nullable *[*]u8 = [path: nullable *[*]u8, null];
 	let env: [1]nullable *[*]u8 = [null];
-	return proc::spawn(path, &argv: proc_cstr_list, &env: proc_cstr_list);
+	return proc_spawn(path, &argv: proc_cstr_list, &env: proc_cstr_list);
 };
 
 @symbol("pk_getpriority") fn proc_getpriority(which: i32, who: i32) i32;
 @symbol("pk_setpriority") fn proc_setpriority(which: i32, who: i32, prio: i32) i32;
 
 fn proc_setpriority_process(pid: i32, prio: i32) i32 = {
-	return proc::setpriority(proc::PRIO_PROCESS, pid, prio);
+	return proc_setpriority(proc_PRIO_PROCESS, pid, prio);
 };
 
 fn proc_getpriority_process(pid: i32) i32 = {
-	return proc::getpriority(proc::PRIO_PROCESS, pid);
+	return proc_getpriority(proc_PRIO_PROCESS, pid);
 };
 
 @symbol("pk_exit") fn proc_exit(status: i32) void;
@@ -68,7 +68,7 @@ fn proc_getpriority_process(pid: i32) i32 = {
 ) i32;
 
 fn proc_pdeathsig(sig: i32) i32 = {
-	return proc::prctl(proc::PR_SET_PDEATHSIG, sig: uintptr, 0, 0, 0);
+	return proc_prctl(proc_PR_SET_PDEATHSIG, sig: uintptr, 0, 0, 0);
 };
 
 fn proc_sleep_ms(ms: i32) void = {
@@ -82,7 +82,7 @@ fn proc_sleep_ms(ms: i32) void = {
     // Fractional seconds to nanoseconds.
     let nsec: i64 = (frac * 1_000_000_000.0f64): i64;
     let ts = proc_timespec { sec = sec, nsec = nsec };
-    proc::nanosleep(&ts, null);
+    proc_nanosleep(&ts, null);
 };
 
 // Non-blocking check if a child process has terminated.
@@ -95,7 +95,7 @@ type alive = !void;
 type procstatus = (alive | i32);
 fn proc_check(pid: i32) procstatus = {
     let status: i32 = 0;
-    let ret = proc::wait_nohang(pid, &status);
+    let ret = proc_wait_nohang(pid, &status);
     if (ret > 0) {
         // Process has exited - decode WIFEXITED / WIFSIGNALED
         // Bits 0-6: exit status or signal number

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Simple Pika compiler driver.
-# Usage: compile.sh <pka files…> -o <output_executable>
+# Usage: compile.sh <pka files…> [-c cfiles…] -o <output_executable>
 
 set -e
 
-CC=clang
+CC="${CC:-gcc}"
 CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wfloat-conversion \
 -Wno-overlength-strings -Wno-unused-function -Wno-unused-variable \
 -Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality \
 -ffunction-sections -fdata-sections -mshstk \
--O3 -ffast-math -funroll-loops -ftree-vectorize -march=native -mtune=native \
+-O3 -ffast-math -fno-finite-math-only -funroll-loops -ftree-vectorize -march=native -mtune=native \
 -finline-functions \
 -fno-strict-aliasing -fno-builtin \
 -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
@@ -28,26 +28,34 @@ LIBPK_MODULES=(
 )
 
 TARGET=""
-INFILES=()
+PKAFILES=()
+CFILES=()
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) shift; TARGET="$1" ;;
-    *) INFILES+=( "$1" ) ;;
+    *.c) CFILES+=( "$1" ) ;;
+    *) PKAFILES+=( "$1" ) ;;
   esac
   shift
 done
 
-if [ -z "$TARGET" ] || [ ${#INFILES[@]} -eq 0 ]; then
-  echo "Usage: $0 <pka files...> -o <output_executable>" >&2
+if [ -z "$TARGET" ] || [ ${#PKAFILES[@]} -eq 0 ]; then
+  echo "Usage: $0 <pka files...> [cfiles...] -o <output_executable>" >&2
   exit 1
 fi
 
 TMPFILE=$(mktemp /tmp/compiled-XXXXXX.c)
-cat "${LIBPK_MODULES[@]}" "${INFILES[@]}" | bin/pika2c > "$TMPFILE"
+# Single TU: transpiled code first (defines types), then rt.c (type guards skip duplicates).
+# Compiler sees rt_memcpy definition when optimizing user code, enabling full inlining.
+# Forward declarations for rt functions not yet known to pika2c.
+RT_FWD='#include <stddef.h>
+extern int rt_memcmp(const void*, const void*, size_t);
+'
+{ printf '%s' "$RT_FWD"; cat "${CFILES[@]}" 2>/dev/null; cat "${LIBPK_MODULES[@]}" "${PKAFILES[@]}" | bin/pika2c; cat runtime/rt.c; } > "$TMPFILE"
 
 start_ms=$(date +%s%3N)
-$CC $CFLAGS -o "$TARGET" "$TMPFILE" runtime/rt.c stdlib/libpk.c
+$CC $CFLAGS -o "$TARGET" "$TMPFILE" stdlib/libpk.c
 end_ms=$(date +%s%3N)
 duration=$((end_ms - start_ms))
 

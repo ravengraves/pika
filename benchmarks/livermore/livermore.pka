@@ -1,0 +1,270 @@
+// livermore.pka - Livermore Loops (LLNL Kernels) for Pika
+// Subset of the 24 LLNL computational kernels.
+// Adapted from Greg Astfalk / Frank McMahon / Roy Longbottom.
+
+use rt;
+use strings;
+
+def LIVER_N: i32 = 1001;
+def LIVER_NRUNS: i32 = 100000;
+
+// --- Data arrays ---
+let liver_x: [1001]f64 = [0...];
+let liver_y: [1001]f64 = [0...];
+let liver_z: [1001]f64 = [0...];
+let liver_u: [1001]f64 = [0...];
+let liver_v: [1001]f64 = [0...];
+let liver_w: [1001]f64 = [0...];
+
+// For matrix multiply (kernel 21): 25x25
+let liver_ma: [625]f64 = [0...];
+let liver_mb: [625]f64 = [0...];
+let liver_mc: [625]f64 = [0...];
+
+// Simple pseudo-random number generator for data init
+let liver_seed: u64 = 12345;
+
+fn liver_rand() f64 = {
+	liver_seed = liver_seed * 6364136223846793005 + 1442695040888963407;
+	let bits = (liver_seed >> 33): u32;
+	return (bits: f64) / 2147483648.0f64;
+};
+
+fn liver_init_arrays() void = {
+	liver_seed = 12345;
+	for (let i = 0z; i < 1001; i += 1) {
+		liver_x[i] = liver_rand() * 2.0f64 - 1.0f64;
+		liver_y[i] = liver_rand() * 2.0f64 - 1.0f64;
+		liver_z[i] = liver_rand() * 2.0f64 - 1.0f64;
+		liver_u[i] = liver_rand() * 2.0f64 - 1.0f64;
+		liver_v[i] = liver_rand() * 2.0f64 - 1.0f64;
+		liver_w[i] = liver_rand() * 2.0f64 - 1.0f64;
+	};
+	for (let i = 0z; i < 625; i += 1) {
+		liver_ma[i] = liver_rand();
+		liver_mb[i] = liver_rand();
+		liver_mc[i] = 0.0f64;
+	};
+};
+
+fn liver_report(name: str, flops_per_iter: f64, n_elem: i32, runs: i32, elapsed: f64) void = {
+	let total_ops = flops_per_iter * (n_elem: f64) * (runs: f64);
+	let mflops = total_ops / (elapsed * 1000000.0f64);
+	bench_write(name);
+	bench_write("  ");
+	bench_write_f64(mflops, 2);
+	bench_write(" MFLOPS  ");
+	bench_write_f64(elapsed, 4);
+	bench_write(" sec\n");
+};
+
+// =====================================================================
+// Kernel 1: Hydro fragment
+//   x[k] = q + y[k]*(r*z[k+10] + t*z[k+11])
+// =====================================================================
+fn liver_kernel1() void = {
+	let q: f64 = 0.5f64;
+	let r: f64 = 0.3f64;
+	let t: f64 = 0.7f64;
+	let nn: i32 = LIVER_N - 12;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		for (let kk: i32 = 0; kk < nn; kk += 1) {
+			liver_x[kk: size] = q + liver_y[kk: size] *
+				(r * liver_z[(kk + 10): size] + t * liver_z[(kk + 11): size]);
+		};
+		benchmark_compiler_barrier();
+	};
+	let te = bench_time_ns();
+	liver_report("K1  Hydro fragment    ", 5.0f64, nn, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 3: Inner product
+//   q += z[k]*x[k]
+// =====================================================================
+fn liver_kernel3() void = {
+	let nn: i32 = LIVER_N;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		let q: f64 = 0.0f64;
+		for (let kk: i32 = 0; kk < nn; kk += 1) {
+			q += liver_z[kk: size] * liver_x[kk: size];
+		};
+		// Prevent dead code elimination
+		liver_x[0] = liver_x[0] + q * 1.0e-20f64;
+	};
+	let te = bench_time_ns();
+	liver_report("K3  Inner product     ", 2.0f64, nn, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 5: Tri-diagonal elimination
+//   x[i] = z[i]*(y[i] - x[i-1])
+// =====================================================================
+fn liver_kernel5() void = {
+	let nn: i32 = LIVER_N;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		for (let ii: i32 = 1; ii < nn; ii += 1) {
+			liver_x[ii: size] = liver_z[ii: size] *
+				(liver_y[ii: size] - liver_x[(ii - 1): size]);
+		};
+	};
+	let te = bench_time_ns();
+	liver_report("K5  Tri-diag elim     ", 3.0f64, nn - 1, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 7: Equation of state fragment
+//   x[k] = u[k] + r*(z[k] + r*y[k]) + t*(u[k+3] + r*(u[k+2] + r*u[k+1])
+//          + t*(u[k+6] + q*(u[k+5] + q*u[k+4])))
+// =====================================================================
+fn liver_kernel7() void = {
+	let q: f64 = 0.5f64;
+	let r: f64 = 0.3f64;
+	let t: f64 = 0.7f64;
+	let nn: i32 = LIVER_N - 7;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		for (let kk: i32 = 0; kk < nn; kk += 1) {
+			liver_x[kk: size] = liver_u[kk: size] +
+				r * (liver_z[kk: size] + r * liver_y[kk: size]) +
+				t * (liver_u[(kk + 3): size] +
+					r * (liver_u[(kk + 2): size] + r * liver_u[(kk + 1): size]) +
+					t * (liver_u[(kk + 6): size] +
+						q * (liver_u[(kk + 5): size] + q * liver_u[(kk + 4): size])));
+		};
+		benchmark_compiler_barrier();
+	};
+	let te = bench_time_ns();
+	liver_report("K7  EOS fragment      ", 16.0f64, nn, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 11: First sum (prefix sum)
+//   x[0] = y[0]; x[k] = x[k-1] + y[k]
+// =====================================================================
+fn liver_kernel11() void = {
+	let nn: i32 = LIVER_N;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		liver_x[0] = liver_y[0];
+		for (let kk: i32 = 1; kk < nn; kk += 1) {
+			liver_x[kk: size] = liver_x[(kk - 1): size] + liver_y[kk: size];
+		};
+	};
+	let te = bench_time_ns();
+	liver_report("K11 First sum         ", 1.0f64, nn - 1, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 12: First difference
+//   x[k] = y[k+1] - y[k]
+// =====================================================================
+fn liver_kernel12() void = {
+	let nn: i32 = LIVER_N - 1;
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		for (let kk: i32 = 0; kk < nn; kk += 1) {
+			liver_x[kk: size] = liver_y[(kk + 1): size] - liver_y[kk: size];
+		};
+		benchmark_compiler_barrier();
+	};
+	let te = bench_time_ns();
+	liver_report("K12 First difference  ", 1.0f64, nn, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// =====================================================================
+// Kernel 21: Matrix*matrix product (25x25)
+//   c[j][k] += a[j][i] * b[i][k]
+// =====================================================================
+def LIVER_SZ: i32 = 25;
+
+fn liver_kernel21() void = {
+
+	let ts = bench_time_ns();
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		// Clear result matrix
+		for (let idx = 0z; idx < 625; idx += 1) {
+			liver_mc[idx] = 0.0f64;
+		};
+		for (let jj: i32 = 0; jj < LIVER_SZ; jj += 1) {
+			for (let kk: i32 = 0; kk < LIVER_SZ; kk += 1) {
+				for (let ii: i32 = 0; ii < LIVER_SZ; ii += 1) {
+					liver_mc[(jj * LIVER_SZ + kk): size] +=
+						liver_ma[(jj * LIVER_SZ + ii): size] *
+						liver_mb[(ii * LIVER_SZ + kk): size];
+				};
+			};
+		};
+	};
+	let te = bench_time_ns();
+	// 2 ops per multiply-add, LIVER_SZ^3 total
+	let flops: f64 = 2.0f64 * 25.0f64 * 25.0f64 * 25.0f64;
+	let elapsed = bench_elapsed_s(ts, te);
+	let mflops = flops * (LIVER_NRUNS: f64) / (elapsed * 1000000.0f64);
+	bench_write("K21 Matrix*matrix     ");
+	bench_write("  ");
+	bench_write_f64(mflops, 2);
+	bench_write(" MFLOPS  ");
+	bench_write_f64(elapsed, 4);
+	bench_write(" sec\n");
+};
+
+// =====================================================================
+// Kernel 24: Find minimum
+//   Find the first minimum in array x
+// =====================================================================
+fn liver_kernel24() void = {
+	let nn: i32 = LIVER_N;
+
+	let ts = bench_time_ns();
+	let min_val: f64 = 0.0f64;
+	for (let run: i32 = 0; run < LIVER_NRUNS; run += 1) {
+		min_val = liver_x[0];
+		for (let kk: i32 = 1; kk < nn; kk += 1) {
+			if (liver_x[kk: size] < min_val) {
+				min_val = liver_x[kk: size];
+			};
+		};
+	};
+	// Prevent DCE
+	liver_x[0] = liver_x[0] + min_val * 1.0e-20f64;
+	let te = bench_time_ns();
+	liver_report("K24 Find minimum      ", 2.0f64, nn, LIVER_NRUNS, bench_elapsed_s(ts, te));
+};
+
+// --- Main ---
+
+export fn main() void = {
+	bench_write("Pika Livermore Loops (LLNL Kernels)\n");
+	bench_write("Array size: ");
+	bench_write_i32(LIVER_N);
+	bench_write("  Runs: ");
+	bench_write_i32(LIVER_NRUNS);
+	bench_nl();
+	bench_nl();
+	bench_write("Kernel                    MFLOPS     Seconds\n");
+	bench_write("------------------------  ---------  --------\n");
+
+	liver_init_arrays();
+
+	liver_kernel1();
+	liver_kernel3();
+	liver_kernel5();
+	liver_kernel7();
+	liver_kernel11();
+	liver_kernel12();
+	liver_kernel21();
+	liver_kernel24();
+
+	bench_nl();
+	bench_write("Done.\n");
+};

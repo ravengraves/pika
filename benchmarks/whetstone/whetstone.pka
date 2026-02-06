@@ -1,0 +1,255 @@
+// whetstone.pka - Whetstone Benchmark for Pika
+// Adapted from Roy Longbottom's C/C++ Whetstone Benchmark
+// Single precision version using Pika's math stdlib
+
+use rt;
+use strings;
+
+// Anti-DCE: global accumulator forces computation to be retained
+let whet_check: f64 = 0.0f64;
+
+// --- Helper procedures (from original Whetstone) ---
+
+fn whet_pa(e: *[*]f32, t: f32, t2: f32) void = {
+    for (let j: i32 = 0; j < 6; j += 1) {
+        e[0] = (e[0] + e[1] + e[2] - e[3]) * t;
+        e[1] = (e[0] + e[1] - e[2] + e[3]) * t;
+        e[2] = (e[0] - e[1] + e[2] + e[3]) * t;
+        e[3] = (-e[0] + e[1] + e[2] + e[3]) / t2;
+    };
+};
+
+fn whet_po(e: *[*]f32, j: i32, k: i32, l: i32) void = {
+    e[j: size] = e[k: size];
+    e[k: size] = e[l: size];
+    e[l: size] = e[j: size];
+};
+
+fn whet_p3(px: *f32, py: *f32, pz: *f32, t: f32, t1: f32, t2: f32) void = {
+    *px = *py;
+    *py = *pz;
+    *px = t * (*px + *py);
+    *py = t1 * (*px + *py);
+    *pz = (*px + *py) / t2;
+};
+
+export fn main() void = {
+    let x100: i64 = 100000;
+    let xtra: i64 = 1;
+
+    let t: f32 = 0.49999975f32;
+    let t0: f32 = t;
+    let t1: f32 = 0.50000025f32;
+    let t2: f32 = 2.0f32;
+
+    let n1: i64 = 12 * x100;
+    let n2: i64 = 14 * x100;
+    let n3: i64 = 345 * x100;
+    let n4: i64 = 210 * x100;
+    let n5: i64 = 32 * x100;
+    let n6: i64 = 899 * x100;
+    let n7: i64 = 616 * x100;
+    let n8: i64 = 93 * x100;
+
+    let e1: [4]f32 = [0...];
+    let total_time: f64 = 0.0f64;
+
+    bench_write("Pika Whetstone Benchmark (Single Precision)\n");
+    bench_write("Passes: ");
+    bench_write_i64(xtra);
+    bench_write(" x ");
+    bench_write_i64(x100);
+    bench_nl();
+    bench_nl();
+    bench_write("Loop content            MFLOPS/MOPS   Seconds\n");
+    bench_write("-------------------     -----------   -------\n");
+
+    // --- Section 1: Array elements ---
+    e1[0] = 1.0; e1[1] = -1.0; e1[2] = -1.0; e1[3] = -1.0;
+    let ts1 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n1 * 10; i += 1) {
+            e1[0] = (e1[0] + e1[1] + e1[2] - e1[3]) * t;
+            e1[1] = (e1[0] + e1[1] - e1[2] + e1[3]) * t;
+            e1[2] = (e1[0] - e1[1] + e1[2] + e1[3]) * t;
+            e1[3] = (-e1[0] + e1[1] + e1[2] + e1[3]) * t;
+        };
+        t = 1.0f32 - t;
+    };
+    t = t0;
+    whet_check += (e1[0]: f64);
+    let te1 = bench_time_ns();
+    let sec1 = bench_elapsed_s(ts1, te1) / 10.0f64;
+    total_time += sec1 * 10.0f64;
+    let mf1 = ((n1 * 16): f64) * (xtra: f64) / (1000000.0f64 * sec1);
+    bench_write("N1 floating point       ");
+    bench_write_f64(mf1, 1);
+    bench_write("         ");
+    bench_write_f64(sec1, 3);
+    bench_nl();
+
+    // --- Section 2: Array as parameter ---
+    let ts2 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n2; i += 1) {
+            whet_pa(&e1: *[*]f32, t, t2);
+        };
+        t = 1.0f32 - t;
+    };
+    t = t0;
+    whet_check += (e1[0]: f64);
+    let te2 = bench_time_ns();
+    let sec2 = bench_elapsed_s(ts2, te2);
+    total_time += sec2;
+    let mf2 = ((n2 * 96): f64) * (xtra: f64) / (1000000.0f64 * sec2);
+    bench_write("N2 floating point       ");
+    bench_write_f64(mf2, 1);
+    bench_write("         ");
+    bench_write_f64(sec2, 3);
+    bench_nl();
+
+    // --- Section 3: Conditional jumps ---
+    let j: i64 = 1;
+    let ts3 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n3; i += 1) {
+            if (j == 1) { j = 2; } else { j = 3; };
+            if (j > 2)  { j = 0; } else { j = 1; };
+            if (j < 1)  { j = 1; } else { j = 0; };
+        };
+    };
+    whet_check += (j: f64);
+    let te3 = bench_time_ns();
+    let sec3 = bench_elapsed_s(ts3, te3);
+    total_time += sec3;
+    let mo3 = ((n3 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec3);
+    bench_write("N3 if then else         ");
+    bench_write_f64(mo3, 1);
+    bench_write("         ");
+    bench_write_f64(sec3, 3);
+    bench_nl();
+
+    // --- Section 4: Integer arithmetic ---
+    j = 1;
+    let k: i64 = 2;
+    let l: i64 = 3;
+    let ts4 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n4; i += 1) {
+            j = j * (k - j) * (l - k);
+            k = l * k - (l - j) * k;
+            l = (l - k) * (k + j);
+            e1[(l - 2): size] = (j + k + l): f32;
+            e1[(k - 2): size] = (j * k * l): f32;
+        };
+    };
+    whet_check += (e1[0]: f64) + (j: f64);
+    let te4 = bench_time_ns();
+    let sec4 = bench_elapsed_s(ts4, te4);
+    total_time += sec4;
+    let mo4 = ((n4 * 15): f64) * (xtra: f64) / (1000000.0f64 * sec4);
+    bench_write("N4 fixed point          ");
+    bench_write_f64(mo4, 1);
+    bench_write("         ");
+    bench_write_f64(sec4, 3);
+    bench_nl();
+
+    // --- Section 5: Trig functions ---
+    let x: f32 = 0.5;
+    let y: f32 = 0.5;
+    let ts5 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 1; i < n5; i += 1) {
+            x = t * math_atan(t2 * math_sin(x) * math_cos(x) /
+                (math_cos(x + y) + math_cos(x - y) - 1.0f32));
+            y = t * math_atan(t2 * math_sin(y) * math_cos(y) /
+                (math_cos(x + y) + math_cos(x - y) - 1.0f32));
+        };
+        t = 1.0f32 - t;
+    };
+    t = t0;
+    whet_check += (x: f64) + (y: f64);
+    let te5 = bench_time_ns();
+    let sec5 = bench_elapsed_s(ts5, te5);
+    total_time += sec5;
+    let mo5 = ((n5 * 26): f64) * (xtra: f64) / (1000000.0f64 * sec5);
+    bench_write("N5 sin,cos etc.         ");
+    bench_write_f64(mo5, 1);
+    bench_write("         ");
+    bench_write_f64(sec5, 3);
+    bench_nl();
+
+    // --- Section 6: Procedure calls ---
+    x = 1.0;
+    y = 1.0;
+    let z: f32 = 1.0;
+    let ts6 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n6; i += 1) {
+            whet_p3(&x, &y, &z, t, t1, t2);
+        };
+    };
+    whet_check += (x: f64) + (y: f64) + (z: f64);
+    let te6 = bench_time_ns();
+    let sec6 = bench_elapsed_s(ts6, te6);
+    total_time += sec6;
+    let mf6 = ((n6 * 6): f64) * (xtra: f64) / (1000000.0f64 * sec6);
+    bench_write("N6 floating point       ");
+    bench_write_f64(mf6, 1);
+    bench_write("         ");
+    bench_write_f64(sec6, 3);
+    bench_nl();
+
+    // --- Section 7: Array references ---
+    j = 0; k = 1; l = 2;
+    e1[0] = 1.0; e1[1] = 2.0; e1[2] = 3.0;
+    let ts7 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n7; i += 1) {
+            whet_po(&e1: *[*]f32, j: i32, k: i32, l: i32);
+        };
+    };
+    whet_check += (e1[0]: f64) + (e1[1]: f64) + (e1[2]: f64);
+    let te7 = bench_time_ns();
+    let sec7 = bench_elapsed_s(ts7, te7);
+    total_time += sec7;
+    let mo7 = ((n7 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec7);
+    bench_write("N7 assignments          ");
+    bench_write_f64(mo7, 1);
+    bench_write("         ");
+    bench_write_f64(sec7, 3);
+    bench_nl();
+
+    // --- Section 8: Standard functions ---
+    x = 0.75;
+    let ts8 = bench_time_ns();
+    for (let ix: i64 = 0; ix < xtra; ix += 1) {
+        for (let i: i64 = 0; i < n8; i += 1) {
+            x = math_sqrt(math_exp(math_log(x) / t1));
+        };
+    };
+    whet_check += (x: f64);
+    let te8 = bench_time_ns();
+    let sec8 = bench_elapsed_s(ts8, te8);
+    total_time += sec8;
+    let mo8 = ((n8 * 4): f64) * (xtra: f64) / (1000000.0f64 * sec8);
+    bench_write("N8 exp,sqrt etc.        ");
+    bench_write_f64(mo8, 1);
+    bench_write("         ");
+    bench_write_f64(sec8, 3);
+    bench_nl();
+
+    // --- Summary ---
+    bench_nl();
+    let mwips = (xtra: f64) * (x100: f64) / (10.0f64 * total_time);
+    bench_write("MWIPS                   ");
+    bench_write_f64(mwips, 3);
+    bench_write("         ");
+    bench_write_f64(total_time, 3);
+    bench_nl();
+
+    // Print checksum to prevent DCE
+    bench_write("Check: ");
+    bench_write_f64(whet_check, 6);
+    bench_nl();
+};

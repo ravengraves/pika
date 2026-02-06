@@ -1,0 +1,565 @@
+// linpack.pka - LINPACK 100x100 Benchmark for Pika
+// Adapted from Roy Longbottom's 1996 C/C++ version
+// Double Precision, unit-stride BLAS unrolled by 8
+// Original source from NETLIB, translated to C by Bonnie Toy 5/88
+
+use rt;
+use strings;
+
+// --- Constants ---
+def LP_NTIMES: i32 = 10;
+def LP_MACHEPS: f64 = 2.2204460492503131e-16f64;
+
+// --- Global arrays ---
+let lp_aa: [40000]f64 = [0...];
+let lp_a: [40200]f64 = [0...];
+let lp_b: [200]f64 = [0...];
+let lp_x: [200]f64 = [0...];
+let lp_ipvt: [200]i32 = [0...];
+let lp_atime: [135]f64 = [0...]; // 9 rows x 15 cols
+let lp_check: f64 = 0.0f64; // anti-DCE checksum
+
+// --- Helpers ---
+
+fn lp_fabs(x: f64) f64 = {
+	if (x < 0.0f64) { return -x; };
+	return x;
+};
+
+fn lp_second() f64 = {
+	return (bench_time_ns(): f64) / 1000000000.0f64;
+};
+
+fn lp_write_sci(v: f64, decimals: i32) void = {
+	let val = v;
+	if (val == 0.0f64) { bench_write("0.0e+00"); return; };
+	let neg = false;
+	if (val < 0.0f64) { neg = true; val = -val; };
+	let exp: i32 = 0;
+	for (val >= 10.0f64) { val /= 10.0f64; exp += 1; };
+	for (val < 1.0f64) { val *= 10.0f64; exp -= 1; };
+	if (neg) { bench_write("-"); };
+	bench_write_f64(val, decimals);
+	bench_write("e");
+	if (exp >= 0) { bench_write("+"); };
+	bench_write_i32(exp);
+};
+
+// =====================================================================
+// BLAS Level 1 - unit stride only, unrolled by 8
+// All take base array + offset to support sub-array access.
+// =====================================================================
+
+fn lp_daxpy(n: i32, da: f64, dx: *[*]f64, dx_o: i32,
+	dy: *[*]f64, dy_o: i32) void = {
+	if (n <= 0 || da == 0.0f64) { return; };
+	let nn: size = n: size;
+	let dxo: size = dx_o: size;
+	let dyo: size = dy_o: size;
+	let m: size = nn & 7z;
+	for (let i: size = 0z; i < m; i += 1z) {
+		dy[dyo + i] += da * dx[dxo + i];
+	};
+	for (let i: size = m; i < nn; i += 8z) {
+		dy[dyo + i] += da * dx[dxo + i];
+		dy[dyo + i + 1z] += da * dx[dxo + i + 1z];
+		dy[dyo + i + 2z] += da * dx[dxo + i + 2z];
+		dy[dyo + i + 3z] += da * dx[dxo + i + 3z];
+		dy[dyo + i + 4z] += da * dx[dxo + i + 4z];
+		dy[dyo + i + 5z] += da * dx[dxo + i + 5z];
+		dy[dyo + i + 6z] += da * dx[dxo + i + 6z];
+		dy[dyo + i + 7z] += da * dx[dxo + i + 7z];
+	};
+};
+
+fn lp_dscal(n: i32, da: f64, dx: *[*]f64, dx_o: i32) void = {
+	if (n <= 0) { return; };
+	let nn: size = n: size;
+	let dxo: size = dx_o: size;
+	let m: size = nn & 7z;
+	for (let i: size = 0z; i < m; i += 1z) {
+		dx[dxo + i] *= da;
+	};
+	for (let i: size = m; i < nn; i += 8z) {
+		dx[dxo + i] *= da;
+		dx[dxo + i + 1z] *= da;
+		dx[dxo + i + 2z] *= da;
+		dx[dxo + i + 3z] *= da;
+		dx[dxo + i + 4z] *= da;
+		dx[dxo + i + 5z] *= da;
+		dx[dxo + i + 6z] *= da;
+		dx[dxo + i + 7z] *= da;
+	};
+};
+
+fn lp_idamax(n: i32, dx: *[*]f64, dx_o: i32) i32 = {
+	if (n < 1) { return -1; };
+	if (n == 1) { return 0; };
+	let dxo: size = dx_o: size;
+	let imax: i32 = 0;
+	let dmax: f64 = lp_fabs(dx[dxo]);
+	for (let i: i32 = 1; i < n; i += 1) {
+		let v = lp_fabs(dx[dxo + (i: size)]);
+		if (v > dmax) { imax = i; dmax = v; };
+	};
+	return imax;
+};
+
+// =====================================================================
+// Core LINPACK routines
+// =====================================================================
+
+fn lp_matgen(a: *[*]f64, lda: i32, n: i32, b: *[*]f64) f64 = {
+	let init: i32 = 1325;
+	let norma: f64 = 0.0f64;
+	let ld: size = lda: size;
+	let nn: size = n: size;
+	for (let j: size = 0z; j < nn; j += 1z) {
+		for (let i: size = 0z; i < nn; i += 1z) {
+			init = 3125 * init % 65536;
+			a[ld * j + i] = ((init: f64) - 32768.0f64) / 16384.0f64;
+			if (a[ld * j + i] > norma) {
+				norma = a[ld * j + i];
+			};
+		};
+	};
+	for (let i: size = 0z; i < nn; i += 1z) {
+		b[i] = 0.0f64;
+	};
+	for (let j: size = 0z; j < nn; j += 1z) {
+		for (let i: size = 0z; i < nn; i += 1z) {
+			b[i] += a[ld * j + i];
+		};
+	};
+	return norma;
+};
+
+// dgefa: LU factorization with partial pivoting
+fn lp_dgefa(a: *[*]f64, lda: i32, n: i32, ipvt: *[*]i32) i32 = {
+	let info: i32 = 0;
+	let t: f64 = 0.0f64;
+	let ld: size = lda: size;
+
+	for (let k: i32 = 0; k < n - 1; k += 1) {
+		let kk: size = k: size;
+		let l = lp_idamax(n - k, a, lda * k + k) + k;
+		ipvt[kk] = l;
+		let ll: size = l: size;
+
+		if (a[ld * kk + ll] == 0.0f64) { info = k; } else {
+			if (l != k) {
+				t = a[ld * kk + ll];
+				a[ld * kk + ll] = a[ld * kk + kk];
+				a[ld * kk + kk] = t;
+			};
+
+			t = -1.0f64 / a[ld * kk + kk];
+			lp_dscal(n - k - 1, t, a, lda * k + k + 1);
+
+			for (let j: i32 = k + 1; j < n; j += 1) {
+				let jj: size = j: size;
+				t = a[ld * jj + ll];
+				if (l != k) {
+					a[ld * jj + ll] = a[ld * jj + kk];
+					a[ld * jj + kk] = t;
+				};
+				lp_daxpy(n - k - 1, t, a, lda * k + k + 1,
+					a, lda * j + k + 1);
+			};
+		};
+	};
+	let nm1: size = (n - 1): size;
+	ipvt[nm1] = n - 1;
+	if (a[ld * nm1 + nm1] == 0.0f64) { info = n - 1; };
+	return info;
+};
+
+// dgesl: solve Ax=b using LU factors (job=0 only)
+fn lp_dgesl(a: *[*]f64, lda: i32, n: i32, ipvt: *[*]i32,
+	b: *[*]f64) void = {
+	let t: f64 = 0.0f64;
+	let ld: size = lda: size;
+
+	// forward elimination (solve L*y = b)
+	for (let fk: i32 = 0; fk < n - 1; fk += 1) {
+		let fi: size = fk: size;
+		let l = ipvt[fi];
+		t = b[l: size];
+		if (l != fk) {
+			b[l: size] = b[fi];
+			b[fi] = t;
+		};
+		lp_daxpy(n - fk - 1, t, a, lda * fk + fk + 1, b, fk + 1);
+	};
+
+	// back substitution (solve U*x = y)
+	let bk: i32 = n - 1;
+	for (bk >= 0) {
+		let bi: size = bk: size;
+		b[bi] /= a[ld * bi + bi];
+		lp_daxpy(bk, -b[bi], a, lda * bk, b, 0);
+		bk -= 1;
+	};
+};
+
+// dmxpy: y += m * x (unrolled by 16, from Longbottom)
+fn lp_dmxpy(n1: i32, y: *[*]f64, n2: i32, ldm: i32,
+	x: *[*]f64, m: *[*]f64) void = {
+	let ld: size = ldm: size;
+	let nn1: size = n1: size;
+	let j: i32 = 0;
+	let jj: size = 0z;
+
+	j = n2 % 2;
+	if (j >= 1) {
+		j -= 1;
+		jj = j: size;
+		for (let i: size = 0z; i < nn1; i += 1z) {
+			y[i] += x[jj] * m[ld * jj + i];
+		};
+	};
+
+	j = n2 % 4;
+	if (j >= 2) {
+		j -= 1;
+		jj = j: size;
+		for (let i: size = 0z; i < nn1; i += 1z) {
+			y[i] = (y[i]
+				+ x[jj - 1z] * m[ld * (jj - 1z) + i])
+				+ x[jj] * m[ld * jj + i];
+		};
+	};
+
+	j = n2 % 8;
+	if (j >= 4) {
+		j -= 1;
+		jj = j: size;
+		for (let i: size = 0z; i < nn1; i += 1z) {
+			y[i] = (((y[i]
+				+ x[jj - 3z] * m[ld * (jj - 3z) + i])
+				+ x[jj - 2z] * m[ld * (jj - 2z) + i])
+				+ x[jj - 1z] * m[ld * (jj - 1z) + i])
+				+ x[jj] * m[ld * jj + i];
+		};
+	};
+
+	j = n2 % 16;
+	if (j >= 8) {
+		j -= 1;
+		jj = j: size;
+		for (let i: size = 0z; i < nn1; i += 1z) {
+			y[i] = (((((((y[i]
+				+ x[jj - 7z] * m[ld * (jj - 7z) + i])
+				+ x[jj - 6z] * m[ld * (jj - 6z) + i])
+				+ x[jj - 5z] * m[ld * (jj - 5z) + i])
+				+ x[jj - 4z] * m[ld * (jj - 4z) + i])
+				+ x[jj - 3z] * m[ld * (jj - 3z) + i])
+				+ x[jj - 2z] * m[ld * (jj - 2z) + i])
+				+ x[jj - 1z] * m[ld * (jj - 1z) + i])
+				+ x[jj] * m[ld * jj + i];
+		};
+	};
+
+	let jmin = (n2 % 16) + 16;
+	j = jmin - 1;
+	for (j < n2) {
+		jj = j: size;
+		for (let i: size = 0z; i < nn1; i += 1z) {
+			y[i] = (((((((((((((((y[i]
+				+ x[jj - 15z] * m[ld * (jj - 15z) + i])
+				+ x[jj - 14z] * m[ld * (jj - 14z) + i])
+				+ x[jj - 13z] * m[ld * (jj - 13z) + i])
+				+ x[jj - 12z] * m[ld * (jj - 12z) + i])
+				+ x[jj - 11z] * m[ld * (jj - 11z) + i])
+				+ x[jj - 10z] * m[ld * (jj - 10z) + i])
+				+ x[jj - 9z] * m[ld * (jj - 9z) + i])
+				+ x[jj - 8z] * m[ld * (jj - 8z) + i])
+				+ x[jj - 7z] * m[ld * (jj - 7z) + i])
+				+ x[jj - 6z] * m[ld * (jj - 6z) + i])
+				+ x[jj - 5z] * m[ld * (jj - 5z) + i])
+				+ x[jj - 4z] * m[ld * (jj - 4z) + i])
+				+ x[jj - 3z] * m[ld * (jj - 3z) + i])
+				+ x[jj - 2z] * m[ld * (jj - 2z) + i])
+				+ x[jj - 1z] * m[ld * (jj - 1z) + i])
+				+ x[jj] * m[ld * jj + i];
+		};
+		j += 16;
+	};
+};
+
+fn lp_epslon(x: f64) f64 = {
+	return LP_MACHEPS * lp_fabs(x);
+};
+
+// =====================================================================
+// Output
+// =====================================================================
+
+fn lp_print_time(col: i32) void = {
+	bench_write("  ");
+	bench_write_f64(lp_atime[(0 * 15 + col): size], 5);
+	bench_write("  ");
+	bench_write_f64(lp_atime[(1 * 15 + col): size], 5);
+	bench_write("  ");
+	bench_write_f64(lp_atime[(2 * 15 + col): size], 5);
+	bench_write("  ");
+	bench_write_f64(lp_atime[(3 * 15 + col): size], 2);
+	bench_write("  ");
+	bench_write_f64(lp_atime[(4 * 15 + col): size], 4);
+	bench_write("  ");
+	bench_write_f64(lp_atime[(5 * 15 + col): size], 4);
+	bench_nl();
+};
+
+// =====================================================================
+// Main benchmark driver
+// =====================================================================
+
+export fn main() void = {
+	let lda: i32 = 201;
+	let ldaa: i32 = 200;
+	let cray: f64 = 0.056f64;
+	let n: i32 = 100;
+	let ops: f64 = (2.0f64 * (n: f64) * (n: f64) * (n: f64)) / 3.0f64
+		+ 2.0f64 * (n: f64) * (n: f64);
+
+	let t1: f64 = 0.0f64;
+	let total: f64 = 0.0f64;
+	let norma: f64 = 0.0f64;
+	let info: i32 = 0;
+	let ts: f64 = 0.0f64;
+
+	bench_write("Unrolled Double Precision Linpack Benchmark - Pika\n\n");
+
+	// --- Single pass timing ---
+	norma = lp_matgen(&lp_a: *[*]f64, lda, n, &lp_b: *[*]f64);
+	t1 = lp_second();
+	info = lp_dgefa(&lp_a: *[*]f64, lda, n, &lp_ipvt: *[*]i32);
+	lp_atime[0] = lp_second() - t1;
+	t1 = lp_second();
+	lp_dgesl(&lp_a: *[*]f64, lda, n, &lp_ipvt: *[*]i32, &lp_b: *[*]f64);
+	lp_atime[15] = lp_second() - t1;
+	total = lp_atime[0] + lp_atime[15];
+
+	// --- Compute residual ---
+	for (let i: i32 = 0; i < n; i += 1) {
+		lp_x[i: size] = lp_b[i: size];
+	};
+	norma = lp_matgen(&lp_a: *[*]f64, lda, n, &lp_b: *[*]f64);
+	for (let i: i32 = 0; i < n; i += 1) {
+		lp_b[i: size] = -lp_b[i: size];
+	};
+	lp_dmxpy(n, &lp_b: *[*]f64, n, lda, &lp_x: *[*]f64, &lp_a: *[*]f64);
+
+	let resid: f64 = 0.0f64;
+	let normx: f64 = 0.0f64;
+	for (let i: i32 = 0; i < n; i += 1) {
+		if (lp_fabs(lp_b[i: size]) > resid) { resid = lp_fabs(lp_b[i: size]); };
+		if (lp_fabs(lp_x[i: size]) > normx) { normx = lp_fabs(lp_x[i: size]); };
+	};
+
+	let eps = lp_epslon(1.0f64);
+	let residn = resid / ((n: f64) * norma * normx * eps);
+	let x1 = lp_x[0] - 1.0f64;
+	let x2 = lp_x[(n - 1): size] - 1.0f64;
+
+	bench_write("norm resid      resid           machep         x[0]-1          x[n-1]-1\n");
+	bench_write("  ");
+	bench_write_f64(residn, 1);
+	bench_write("  ");
+	lp_write_sci(resid, 8);
+	bench_write("  ");
+	lp_write_sci(eps, 8);
+	bench_write("  ");
+	lp_write_sci(x1, 8);
+	bench_write("  ");
+	lp_write_sci(x2, 8);
+	bench_nl();
+	bench_nl();
+
+	bench_write("Times are reported for matrices of order        ");
+	bench_write_i32(n);
+	bench_nl();
+	bench_write("1 pass times for array with leading dimension of ");
+	bench_write_i32(lda);
+	bench_nl();
+	bench_nl();
+	bench_write("      dgefa      dgesl      total     Mflops       unit      ratio\n");
+
+	lp_atime[30] = total;
+	if (total > 0.0f64) {
+		lp_atime[45] = ops / (1.0e6f64 * total);
+		lp_atime[60] = 2.0f64 / lp_atime[45];
+	} else {
+		lp_atime[45] = 0.0f64;
+		lp_atime[60] = 0.0f64;
+	};
+	lp_atime[75] = total / cray;
+	lp_print_time(0);
+
+	// --- Calculate matgen overhead ---
+	bench_nl();
+	bench_write("Calculating matgen overhead\n");
+	let pass: i32 = -20;
+	let mg_loop: i32 = LP_NTIMES;
+	let overhead1: f64 = 0.0f64;
+	for (true) {
+		ts = lp_second();
+		pass += 1;
+		for (let i: i32 = 0; i < mg_loop; i += 1) {
+			norma = lp_matgen(&lp_a: *[*]f64, lda, n, &lp_b: *[*]f64);
+		};
+		overhead1 = lp_second() - ts;
+		bench_write("    ");
+		bench_write_i32(mg_loop);
+		bench_write(" times  ");
+		bench_write_f64(overhead1, 2);
+		bench_write(" seconds\n");
+		if (overhead1 > 5.0f64) { pass = 0; };
+		if (pass < 0) {
+			if (overhead1 < 0.1f64) { mg_loop *= 10; }
+			else { mg_loop *= 2; };
+		};
+		if (pass >= 0) { break; };
+	};
+	overhead1 /= (mg_loop: f64);
+	bench_write("Overhead for 1 matgen  ");
+	bench_write_f64(overhead1, 5);
+	bench_write(" seconds\n\n");
+
+	// --- Calculate matgen/dgefa passes for 5 seconds ---
+	bench_write("Calculating matgen/dgefa passes for 5 seconds\n");
+	pass = -20;
+	let ntimes: i32 = LP_NTIMES;
+	let time2_cal: f64 = 0.0f64;
+	for (true) {
+		ts = lp_second();
+		pass += 1;
+		for (let i: i32 = 0; i < ntimes; i += 1) {
+			norma = lp_matgen(&lp_a: *[*]f64, lda, n, &lp_b: *[*]f64);
+			info = lp_dgefa(&lp_a: *[*]f64, lda, n, &lp_ipvt: *[*]i32);
+		};
+		time2_cal = lp_second() - ts;
+		bench_write("    ");
+		bench_write_i32(ntimes);
+		bench_write(" times  ");
+		bench_write_f64(time2_cal, 2);
+		bench_write(" seconds\n");
+		if (time2_cal > 5.0f64) { pass = 0; };
+		if (pass < 0) {
+			if (time2_cal < 0.1f64) { ntimes *= 10; }
+			else { ntimes *= 2; };
+		};
+		if (pass >= 0) { break; };
+	};
+
+	ntimes = (5.0f64 * (ntimes: f64) / time2_cal): i32;
+	if (ntimes == 0) { ntimes = 1; };
+	bench_write("Passes used  ");
+	bench_write_i32(ntimes);
+	bench_nl();
+	bench_nl();
+	bench_write("Times for array with leading dimension of ");
+	bench_write_i32(lda);
+	bench_nl();
+	bench_nl();
+	bench_write("      dgefa      dgesl      total     Mflops       unit      ratio\n");
+
+	// --- Execute 5 passes (lda=201) ---
+	let tm2 = (ntimes: f64) * overhead1;
+	lp_atime[3 * 15 + 6] = 0.0f64;
+
+	for (let j: i32 = 1; j < 6; j += 1) {
+		t1 = lp_second();
+		for (let i: i32 = 0; i < ntimes; i += 1) {
+			norma = lp_matgen(&lp_a: *[*]f64, lda, n, &lp_b: *[*]f64);
+			info = lp_dgefa(&lp_a: *[*]f64, lda, n, &lp_ipvt: *[*]i32);
+		};
+		lp_atime[(0 * 15 + j): size] = (lp_second() - t1 - tm2) / (ntimes: f64);
+
+		t1 = lp_second();
+		for (let i: i32 = 0; i < ntimes; i += 1) {
+			lp_dgesl(&lp_a: *[*]f64, lda, n, &lp_ipvt: *[*]i32, &lp_b: *[*]f64);
+			lp_check += lp_b[0];
+		};
+		lp_atime[(1 * 15 + j): size] = (lp_second() - t1) / (ntimes: f64);
+
+		total = lp_atime[(0 * 15 + j): size] + lp_atime[(1 * 15 + j): size];
+		lp_atime[(2 * 15 + j): size] = total;
+		lp_atime[(3 * 15 + j): size] = ops / (1.0e6f64 * total);
+		lp_atime[(4 * 15 + j): size] = 2.0f64 / lp_atime[(3 * 15 + j): size];
+		lp_atime[(5 * 15 + j): size] = total / cray;
+		lp_atime[3 * 15 + 6] += lp_atime[(3 * 15 + j): size];
+
+		lp_print_time(j);
+	};
+	lp_atime[3 * 15 + 6] /= 5.0f64;
+	bench_write("Average                          ");
+	bench_write_f64(lp_atime[3 * 15 + 6], 2);
+	bench_nl();
+
+	// --- Calculate matgen2 overhead (ldaa=200) ---
+	bench_nl();
+	bench_write("Calculating matgen2 overhead\n");
+	ts = lp_second();
+	for (let i: i32 = 0; i < mg_loop; i += 1) {
+		norma = lp_matgen(&lp_aa: *[*]f64, ldaa, n, &lp_b: *[*]f64);
+	};
+	let overhead2 = (lp_second() - ts) / (mg_loop: f64);
+	bench_write("Overhead for 1 matgen  ");
+	bench_write_f64(overhead2, 5);
+	bench_write(" seconds\n\n");
+
+	bench_write("Times for array with leading dimension of ");
+	bench_write_i32(ldaa);
+	bench_nl();
+	bench_nl();
+	bench_write("      dgefa      dgesl      total     Mflops       unit      ratio\n");
+
+	// --- Execute 5 passes (ldaa=200) ---
+	tm2 = (ntimes: f64) * overhead2;
+	lp_atime[3 * 15 + 12] = 0.0f64;
+
+	for (let j: i32 = 7; j < 12; j += 1) {
+		t1 = lp_second();
+		for (let i: i32 = 0; i < ntimes; i += 1) {
+			norma = lp_matgen(&lp_aa: *[*]f64, ldaa, n, &lp_b: *[*]f64);
+			info = lp_dgefa(&lp_aa: *[*]f64, ldaa, n, &lp_ipvt: *[*]i32);
+		};
+		lp_atime[(0 * 15 + j): size] = (lp_second() - t1 - tm2) / (ntimes: f64);
+
+		t1 = lp_second();
+		for (let i: i32 = 0; i < ntimes; i += 1) {
+			lp_dgesl(&lp_aa: *[*]f64, ldaa, n, &lp_ipvt: *[*]i32, &lp_b: *[*]f64);
+			lp_check += lp_b[0];
+		};
+		lp_atime[(1 * 15 + j): size] = (lp_second() - t1) / (ntimes: f64);
+
+		total = lp_atime[(0 * 15 + j): size] + lp_atime[(1 * 15 + j): size];
+		lp_atime[(2 * 15 + j): size] = total;
+		lp_atime[(3 * 15 + j): size] = ops / (1.0e6f64 * total);
+		lp_atime[(4 * 15 + j): size] = 2.0f64 / lp_atime[(3 * 15 + j): size];
+		lp_atime[(5 * 15 + j): size] = total / cray;
+		lp_atime[3 * 15 + 12] += lp_atime[(3 * 15 + j): size];
+
+		lp_print_time(j);
+	};
+	lp_atime[3 * 15 + 12] /= 5.0f64;
+	bench_write("Average                          ");
+	bench_write_f64(lp_atime[3 * 15 + 12], 2);
+	bench_nl();
+
+	// --- Final result: minimum of two averages ---
+	let mflops = lp_atime[3 * 15 + 6];
+	if (lp_atime[3 * 15 + 12] < mflops) { mflops = lp_atime[3 * 15 + 12]; };
+
+	bench_nl();
+	bench_write("Unrolled Double Precision ");
+	bench_write_f64(mflops, 2);
+	bench_write(" Mflops\n");
+
+	// Print checksum to prevent dead code elimination of dgesl
+	bench_write("Checksum ");
+	lp_write_sci(lp_check, 6);
+	bench_nl();
+};

@@ -2,8 +2,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* String type matching Hare's str */
+/* String type matching Hare's str.
+ * Guard: when catted into unified build, pika2c already defines these types. */
+#ifndef HARE_DEFINE_SLICE
 typedef struct { uint8_t* data; size_t len; } hare_str;
+#endif
 
 /* Error tag base for tagged unions */
 #define HARE_ERROR_TAG_BASE 0x80000000U
@@ -50,17 +53,31 @@ void rt_memcpy(void* __restrict__ dest, const void* __restrict__ src, size_t n) 
 	uint8_t* __restrict__ d = (uint8_t*)dest;
 	const uint8_t* __restrict__ s = (const uint8_t*)src;
 
-	/* Fast path: word-aligned, use unrolled copies */
+	/* Fast path: word-aligned, compiler auto-vectorizes to SIMD width
+	 * (AVX2 ymm on modern x86, NEON on ARM, etc.) */
 	if (HARE_IS_ALIGNED(d) && HARE_IS_ALIGNED(s)) {
 		size_t* dw = (size_t*)d;
 		const size_t* sw = (const size_t*)s;
 
-		/* 64-byte unrolled loop (8 words at a time) - SIMD-friendly */
-		while (n >= 8 * HARE_WORD_SIZE) {
-			dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
-			dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
-			dw += 8; sw += 8;
-			n -= 8 * HARE_WORD_SIZE;
+		if (n >= 32768) {
+			/* Large copy (> L1): prefetch hides L2/L3/RAM latency */
+			while (n >= 8 * HARE_WORD_SIZE) {
+				__builtin_prefetch(sw + 16, 0, 1);
+				__builtin_prefetch(dw + 16, 1, 1);
+				dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
+				dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
+				dw += 8; sw += 8;
+				n -= 8 * HARE_WORD_SIZE;
+			}
+		} else {
+			/* L1-sized copy: skip prefetch (data already in cache;
+			 * prefetch instructions compete for load ports on x86) */
+			while (n >= 8 * HARE_WORD_SIZE) {
+				dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
+				dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
+				dw += 8; sw += 8;
+				n -= 8 * HARE_WORD_SIZE;
+			}
 		}
 		/* 32-byte unrolled (4 words) */
 		while (n >= 4 * HARE_WORD_SIZE) {
@@ -90,12 +107,22 @@ void rt_memmove(void* dest, const void* src, size_t n) {
 			size_t* dw = (size_t*)d;
 			const size_t* sw = (const size_t*)s;
 
-			/* 64-byte unrolled loop */
-			while (n >= 8 * HARE_WORD_SIZE) {
-				dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
-				dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
-				dw += 8; sw += 8;
-				n -= 8 * HARE_WORD_SIZE;
+			if (n >= 32768) {
+				while (n >= 8 * HARE_WORD_SIZE) {
+					__builtin_prefetch(sw + 16, 0, 1);
+					__builtin_prefetch(dw + 16, 1, 1);
+					dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
+					dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
+					dw += 8; sw += 8;
+					n -= 8 * HARE_WORD_SIZE;
+				}
+			} else {
+				while (n >= 8 * HARE_WORD_SIZE) {
+					dw[0] = sw[0]; dw[1] = sw[1]; dw[2] = sw[2]; dw[3] = sw[3];
+					dw[4] = sw[4]; dw[5] = sw[5]; dw[6] = sw[6]; dw[7] = sw[7];
+					dw += 8; sw += 8;
+					n -= 8 * HARE_WORD_SIZE;
+				}
 			}
 			/* 32-byte unrolled (4 words) */
 			while (n >= 4 * HARE_WORD_SIZE) {
@@ -185,6 +212,69 @@ void rt_memset(void* dest, int c, size_t n) {
 	while (n--) *d++ = val;
 }
 
+int rt_memcmp(const void* a, const void* b, size_t n) {
+	const uint8_t* pa = (const uint8_t*)a;
+	const uint8_t* pb = (const uint8_t*)b;
+
+	/* Word-aligned fast path */
+	if (HARE_IS_ALIGNED(pa) && HARE_IS_ALIGNED(pb)) {
+		const size_t* wa = (const size_t*)pa;
+		const size_t* wb = (const size_t*)pb;
+
+		/* 64-byte unrolled loop (8 words) - SIMD-friendly */
+		while (n >= 8 * HARE_WORD_SIZE) {
+			if (wa[0] != wb[0] || wa[1] != wb[1] ||
+			    wa[2] != wb[2] || wa[3] != wb[3] ||
+			    wa[4] != wb[4] || wa[5] != wb[5] ||
+			    wa[6] != wb[6] || wa[7] != wb[7]) {
+				pa = (const uint8_t*)wa;
+				pb = (const uint8_t*)wb;
+				for (size_t i = 0; i < 8 * HARE_WORD_SIZE; i++) {
+					if (pa[i] != pb[i])
+						return pa[i] < pb[i] ? -1 : 1;
+				}
+			}
+			wa += 8; wb += 8;
+			n -= 8 * HARE_WORD_SIZE;
+		}
+		/* 32-byte unrolled (4 words) */
+		while (n >= 4 * HARE_WORD_SIZE) {
+			if (wa[0] != wb[0] || wa[1] != wb[1] ||
+			    wa[2] != wb[2] || wa[3] != wb[3]) {
+				pa = (const uint8_t*)wa;
+				pb = (const uint8_t*)wb;
+				for (size_t i = 0; i < 4 * HARE_WORD_SIZE; i++) {
+					if (pa[i] != pb[i])
+						return pa[i] < pb[i] ? -1 : 1;
+				}
+			}
+			wa += 4; wb += 4;
+			n -= 4 * HARE_WORD_SIZE;
+		}
+		/* Single word loop */
+		while (n >= HARE_WORD_SIZE) {
+			if (*wa != *wb) {
+				pa = (const uint8_t*)wa;
+				pb = (const uint8_t*)wb;
+				for (size_t i = 0; i < HARE_WORD_SIZE; i++) {
+					if (pa[i] != pb[i])
+						return pa[i] < pb[i] ? -1 : 1;
+				}
+			}
+			wa++; wb++;
+			n -= HARE_WORD_SIZE;
+		}
+		pa = (const uint8_t*)wa;
+		pb = (const uint8_t*)wb;
+	}
+	/* Byte remainder */
+	while (n--) {
+		if (*pa != *pb) return *pa < *pb ? -1 : 1;
+		pa++; pb++;
+	}
+	return 0;
+}
+
 int rt_strcmp(hare_str a, hare_str b) {
 	if (a.len != b.len) return 0;
 
@@ -192,20 +282,11 @@ int rt_strcmp(hare_str a, hare_str b) {
 	const uint8_t* pb = b.data;
 	size_t n = a.len;
 
-	/* Word-aligned fast path with unrolling */
+	/* Word-aligned fast path (2-loop: optimized for typical string lengths) */
 	if (HARE_IS_ALIGNED(pa) && HARE_IS_ALIGNED(pb)) {
 		const size_t* wa = (const size_t*)pa;
 		const size_t* wb = (const size_t*)pb;
 
-		/* 64-byte unrolled comparison (8 words) - SIMD-friendly */
-		while (n >= 8 * HARE_WORD_SIZE) {
-			if (wa[0] != wb[0] || wa[1] != wb[1] ||
-			    wa[2] != wb[2] || wa[3] != wb[3] ||
-			    wa[4] != wb[4] || wa[5] != wb[5] ||
-			    wa[6] != wb[6] || wa[7] != wb[7]) return 0;
-			wa += 8; wb += 8;
-			n -= 8 * HARE_WORD_SIZE;
-		}
 		/* 32-byte unrolled (4 words) */
 		while (n >= 4 * HARE_WORD_SIZE) {
 			if (wa[0] != wb[0] || wa[1] != wb[1] ||
@@ -221,7 +302,7 @@ int rt_strcmp(hare_str a, hare_str b) {
 		pa = (const uint8_t*)wa;
 		pb = (const uint8_t*)wb;
 	}
-	/* Byte comparison for remainder */
+	/* Byte remainder */
 	while (n--) {
 		if (*pa++ != *pb++) return 0;
 	}
@@ -503,6 +584,24 @@ __attribute__((used))
 int rt_start_c(void) {
 	// Linux safety: kill this process if its parent exits.
 	rt_pdeathsig_init();
+	// Set FTZ+DAZ for -ffast-math performance.
+	// Without this, denormal floats cause ~100x pipeline stalls.
+	// Normally crtfastmath.o does this, but -nostdlib skips it.
+#if defined(__x86_64__) || defined(__i386__)
+	{
+		unsigned int mxcsr;
+		__asm__ volatile ("stmxcsr %0" : "=m"(mxcsr));
+		mxcsr |= 0x8040; // FTZ (bit 15) | DAZ (bit 6)
+		__asm__ volatile ("ldmxcsr %0" : : "m"(mxcsr));
+	}
+#elif defined(__aarch64__)
+	{
+		unsigned long fpcr;
+		__asm__ volatile ("mrs %0, fpcr" : "=r"(fpcr));
+		fpcr |= (1UL << 24); // FZ bit — flush denormals to zero
+		__asm__ volatile ("msr fpcr, %0" : : "r"(fpcr));
+	}
+#endif
 	_main();
 	return 0;
 }
@@ -579,11 +678,13 @@ void* memset(void* dest, int val, size_t n) { rt_memset(dest, (uint8_t)val, n); 
  * ========================================================================== */
 
 /* Slice type for []u8 - matches transpiler-generated hare_slice_uint8_t */
+#ifndef HARE_DEFINE_SLICE
 typedef struct {
 	uint8_t* data;
 	size_t len;
 	size_t cap;
 } hare_slice_uint8_t;
+#endif
 
 /* Convert str to []u8 - returns a view (no copy) */
 hare_slice_uint8_t strings_toutf8(hare_str s) {
