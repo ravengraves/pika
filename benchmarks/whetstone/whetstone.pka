@@ -7,6 +7,15 @@ use strings;
 
 // Anti-DCE: global accumulator forces computation to be retained
 let whet_check: f64 = 0.0f64;
+let whet_opaque: i64 = 0; // anti-DCE: route locals through global to make them opaque
+let whet_n3_seeds: [256]i64 = [0...];
+
+fn whet_init_n3_seeds() void = {
+    for (let si: i32 = 0; si < 256; si += 1) {
+        whet_n3_seeds[si: size] = (si & 1): i64;
+    };
+    benchmark_compiler_barrier();
+};
 
 // --- Helper procedures (from original Whetstone) ---
 
@@ -109,13 +118,17 @@ export fn main() void = {
     bench_nl();
 
     // --- Section 3: Conditional jumps ---
+    whet_init_n3_seeds();
     let j: i64 = 1;
     let ts3 = bench_time_ns();
     for (let ix: i64 = 0; ix < xtra; ix += 1) {
         for (let i: i64 = 0; i < n3; i += 1) {
-            if (j == 1) { j = 2; } else { j = 3; };
+            if (j == 1) { j = 2; } else if (j == 0) { j = 3; } else { break; };
             if (j > 2)  { j = 0; } else { j = 1; };
             if (j < 1)  { j = 1; } else { j = 0; };
+            whet_n3_seeds[(i & 255): size] = j;
+            benchmark_compiler_barrier();
+            j = whet_n3_seeds[((i + 1) & 255): size];
         };
     };
     whet_check += (j: f64);
@@ -141,6 +154,9 @@ export fn main() void = {
             l = (l - k) * (k + j);
             e1[(l - 2): size] = (j + k + l): f32;
             e1[(k - 2): size] = (j * k * l): f32;
+            whet_opaque = j;
+            benchmark_compiler_barrier();
+            j = whet_opaque;
         };
     };
     whet_check += (e1[0]: f64) + (j: f64);
@@ -207,6 +223,7 @@ export fn main() void = {
     for (let ix: i64 = 0; ix < xtra; ix += 1) {
         for (let i: i64 = 0; i < n7; i += 1) {
             whet_po(&e1: *[*]f32, j: i32, k: i32, l: i32);
+            benchmark_compiler_barrier();
         };
     };
     whet_check += (e1[0]: f64) + (e1[1]: f64) + (e1[2]: f64);

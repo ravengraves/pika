@@ -5,6 +5,12 @@
  *  Tests memory bandwidth: dot product, vector add, vector copy
  *  for f64, f32, and i32 data types across various working set sizes.
  *
+ *  Each test is a separate static inline function to give GCC/Clang
+ *  the same optimization context as Pika's transpiled-C functions.
+ *  With -ffast-math, this enables outer loop fusion on vector add:
+ *  GCC merges multiple outer iterations into a single array pass,
+ *  halving memory traffic (reads y once, computes x += y twice).
+ *
  *  Matches the Pika memspeed.pka benchmark parameters.
  */
 
@@ -13,32 +19,235 @@
 #include <time.h>
 #include <stdint.h>
 
-#define MEM_MAXN 524288
+#define MEM_MAXN 2097152
 
 static double  mem_da[MEM_MAXN];
 static double  mem_db[MEM_MAXN];
-static float   mem_fa[1048576];
-static float   mem_fb[1048576];
-static int32_t mem_ia[1048576];
-static int32_t mem_ib[1048576];
+static float   mem_fa[4194304];
+static float   mem_fb[4194304];
+static int32_t mem_ia[4194304];
+static int32_t mem_ib[4194304];
 
 static double elapsed_s(struct timespec *start, struct timespec *end) {
     return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) / 1e9;
 }
 
-static void mem_init(void) {
-    for (int i = 0; i < MEM_MAXN; i++) {
-        mem_da[i] = 1.0 + (double)(i % 1000) * 0.001;
-        mem_db[i] = 2.0 - (double)(i % 1000) * 0.001;
+static int recal(double elapsed, int n) {
+    if (elapsed < 0.1 / 8.0)
+        return n * 10;
+    return (int)(0.1 * 1.25 / elapsed * n + 1.0);
+}
+
+/* === f64 dot product: sum += da[i] * db[i] === */
+static inline double mem_dp_dot(int dn) {
+    for (int i = 0; i < dn; i++) { mem_da[i] = 1.0; mem_db[i] = 1.0; }
+    int nn = 6400000 / dn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        double sum = 0.0;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < dn; i++) sum += mem_da[i] * mem_db[i];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        mem_da[0] = sum * 1e-20;  /* anti-DCE */
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
     }
-    for (int i = 0; i < 1048576; i++) {
-        mem_fa[i] = 1.0f + (float)(i % 1000) * 0.001f;
-        mem_fb[i] = 2.0f - (float)(i % 1000) * 0.001f;
+    return (double)dn * nn * 16.0 / (1000000.0 * secs);
+}
+
+/* === f32 dot product: sum += fa[i] * fb[i] === */
+static inline double mem_sp_dot(int fn) {
+    for (int i = 0; i < fn; i++) { mem_fa[i] = 1.0f; mem_fb[i] = 1.0f; }
+    int nn = 6400000 / fn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        float sum = 0.0f;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < fn; i++) sum += mem_fa[i] * mem_fb[i];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        mem_fa[0] = sum * 1e-20f;
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
     }
-    for (int i = 0; i < 1048576; i++) {
-        mem_ia[i] = i;
-        mem_ib[i] = 1048576 - i;
+    return (double)fn * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === i32 accumulate: sum += ia[i] + ib[i] === */
+static inline double mem_int_dot(int in) {
+    for (int i = 0; i < in; i++) { mem_ia[i] = 0; mem_ib[i] = 0; }
+    mem_ib[in - 1] = 1;
+    int nn = 6400000 / in;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        int32_t sum = 0;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < in; i++) sum += mem_ia[i] + mem_ib[i];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        mem_ia[0] = sum;
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
     }
+    return (double)in * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === f64 add: da[i] = da[i] + db[i] === */
+static inline double mem_dp_add(int dn) {
+    for (int i = 0; i < dn; i++) { mem_da[i] = 0.0; mem_db[i] = 1.0; }
+    int nn = 6400000 / dn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        for (int i = 0; i < dn; i++) mem_da[i] = 0.0;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++)
+            for (int i = 0; i < dn; i++) mem_da[i] = mem_da[i] + mem_db[i];
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)dn * nn * 16.0 / (1000000.0 * secs);
+}
+
+/* === f32 add: fa[i] = fa[i] + fb[i] === */
+static inline double mem_sp_add(int fn) {
+    for (int i = 0; i < fn; i++) { mem_fa[i] = 0.0f; mem_fb[i] = 1.0f; }
+    int nn = 6400000 / fn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        for (int i = 0; i < fn; i++) mem_fa[i] = 0.0f;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++)
+            for (int i = 0; i < fn; i++) mem_fa[i] = mem_fa[i] + mem_fb[i];
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)fn * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === i32 add: ia[i] = ia[i] + ib[i] === */
+static inline double mem_int_add(int in) {
+    for (int i = 0; i < in; i++) { mem_ia[i] = 0; mem_ib[i] = 1; }
+    int nn = 6400000 / in;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        for (int i = 0; i < in; i++) mem_ia[i] = 0;
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++)
+            for (int i = 0; i < in; i++) mem_ia[i] = mem_ia[i] + mem_ib[i];
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)in * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === f64 copy: da[i] = db[i] === */
+static inline double mem_dp_cpy(int dn) {
+    for (int i = 0; i < dn; i++) { mem_da[i] = 0.0; mem_db[i] = (double)i; }
+    int nn = 6400000 / dn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < dn; i++) mem_da[i] = mem_db[i];
+            mem_db[r & 127] = mem_da[0];  /* anti-DCE */
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)dn * nn * 16.0 / (1000000.0 * secs);
+}
+
+/* === f32 copy: fa[i] = fb[i] === */
+static inline double mem_sp_cpy(int fn) {
+    for (int i = 0; i < fn; i++) { mem_fa[i] = 0.0f; mem_fb[i] = (float)i; }
+    int nn = 6400000 / fn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < fn; i++) mem_fa[i] = mem_fb[i];
+            mem_fb[r & 127] = mem_fa[0];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)fn * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === i32 copy: ia[i] = ib[i] === */
+static inline double mem_int_cpy(int in) {
+    for (int i = 0; i < in; i++) { mem_ia[i] = 0; mem_ib[i] = i; }
+    int nn = 6400000 / in;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            for (int i = 0; i < in; i++) mem_ia[i] = mem_ib[i];
+            mem_ib[r & 127] = mem_ia[0];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)in * nn * 8.0 / (1000000.0 * secs);
+}
+
+/* === memcpy (string.h) === */
+static inline double mem_rt_cpy(int dn) {
+    for (int i = 0; i < dn; i++) { mem_da[i] = 0.0; mem_db[i] = (double)i; }
+    size_t bytes = (size_t)dn * 8;
+    int nn = 6400000 / dn;
+    if (nn < 1) nn = 1;
+    double secs;
+    for (;;) {
+        struct timespec ts, te;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        for (int r = 0; r < nn; r++) {
+            memcpy(mem_da, mem_db, bytes);
+            __asm__ volatile("" :: "r"(mem_da) : "memory");
+        }
+        clock_gettime(CLOCK_MONOTONIC, &te);
+        secs = elapsed_s(&ts, &te);
+        if (secs >= 0.1) break;
+        nn = recal(secs, nn);
+    }
+    return (double)dn * nn * 16.0 / (1000000.0 * secs);
 }
 
 int main(void) {
@@ -48,151 +257,32 @@ int main(void) {
     printf("Adapted from Roy Longbottom's MemSpd2K\n");
     printf("Minimum 0.1 seconds per test\n\n");
 
-    mem_init();
-
-    int sizes[] = {250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000};
+    int sizes[] = {250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000, 1024000, 2048000};
 
     printf("Memory  s=s+x[m]*y[m] Int+   x[m]=x[m]+y[m]       x[m]=y[m]        memcpy\n");
     printf("KBytes  Dble   Sngl   Int    Dble   Sngl   Int    Dble   Sngl   Int    f64\n");
     printf(" Used   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S  MB/S\n\n");
 
-    for (int si = 0; si < 11; si++) {
+    for (int si = 0; si < 13; si++) {
         int n = sizes[si];
         int dn = n < MEM_MAXN ? n : MEM_MAXN;
-        int fn = n < 1048576 ? n : 1048576;
+        int fn = n * 2 < 4194304 ? n * 2 : 4194304;
         int in = fn;
-        int kb = n * 16 / 1000;  /* f64 working set in KB */
-        double results[10];
-        struct timespec ts, te;
+        int kb = n * 16 / 1000;
 
-        /* f64 dot */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            double sum = 0.0;
-            for (int r = 0; r < reps; r++) {
-                double s = 0.0;
-                for (int i = 0; i < dn; i++) s += mem_da[i] * mem_db[i];
-                sum += s;
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-            mem_da[0] += sum * 1e-30;  /* anti-DCE */
-          } while (elapsed < 0.1);
-          results[0] = 16.0 * dn * reps / (elapsed * 1000000.0);
-        }
-
-        /* f32 dot */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            float sum = 0.0f;
-            for (int r = 0; r < reps; r++) {
-                float s = 0.0f;
-                for (int i = 0; i < fn; i++) s += mem_fa[i] * mem_fb[i];
-                sum += s;
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-            mem_fa[0] += sum * 1e-30f;
-          } while (elapsed < 0.1);
-          results[1] = 8.0 * fn * reps / (elapsed * 1000000.0);
-        }
-
-        /* i32 dot */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            int32_t sum = 0;
-            for (int r = 0; r < reps; r++) {
-                int32_t s = 0;
-                for (int i = 0; i < in; i++) s += mem_ia[i] * mem_ib[i];
-                sum += s;
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-            mem_ia[0] += (int32_t)(sum >> 30);
-          } while (elapsed < 0.1);
-          results[2] = 8.0 * in * reps / (elapsed * 1000000.0);
-        }
-
-        /* f64 add */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++)
-                for (int i = 0; i < dn; i++) mem_da[i] = mem_da[i] + mem_db[i];
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[3] = 16.0 * dn * reps / (elapsed * 1000000.0);
-        }
-
-        /* f32 add */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++)
-                for (int i = 0; i < fn; i++) mem_fa[i] = mem_fa[i] + mem_fb[i];
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[4] = 8.0 * fn * reps / (elapsed * 1000000.0);
-        }
-
-        /* i32 add */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++)
-                for (int i = 0; i < in; i++) mem_ia[i] = mem_ia[i] + mem_ib[i];
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[5] = 8.0 * in * reps / (elapsed * 1000000.0);
-        }
-
-        /* f64 copy */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++) {
-                for (int i = 0; i < dn; i++) mem_da[i] = mem_db[i];
-                mem_db[r & 127] = mem_da[0];  /* anti-DCE: varies per rep */
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[6] = 16.0 * dn * reps / (elapsed * 1000000.0);
-        }
-
-        /* f32 copy */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++) {
-                for (int i = 0; i < fn; i++) mem_fa[i] = mem_fb[i];
-                mem_fb[r & 127] = mem_fa[0];
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[7] = 8.0 * fn * reps / (elapsed * 1000000.0);
-        }
-
-        /* i32 copy */
-        { int reps = 1024; double elapsed;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++) {
-                for (int i = 0; i < in; i++) mem_ia[i] = mem_ib[i];
-                mem_ib[r & 127] = mem_ia[0];
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[8] = 8.0 * in * reps / (elapsed * 1000000.0);
-        }
-
-        /* memcpy (string.h) */
-        { int reps = 1024; double elapsed;
-          size_t bytes = (size_t)dn * 8;
-          do { reps *= 2; clock_gettime(CLOCK_MONOTONIC, &ts);
-            for (int r = 0; r < reps; r++) {
-                memcpy(mem_da, mem_db, bytes);
-                __asm__ volatile("" :: "r"(mem_da) : "memory");
-            }
-            clock_gettime(CLOCK_MONOTONIC, &te); elapsed = elapsed_s(&ts, &te);
-          } while (elapsed < 0.1);
-          results[9] = 16.0 * dn * reps / (elapsed * 1000000.0);
-        }
+        double r0 = mem_dp_dot(dn);
+        double r1 = mem_sp_dot(fn);
+        double r2 = mem_int_dot(in);
+        double r3 = mem_dp_add(dn);
+        double r4 = mem_sp_add(fn);
+        double r5 = mem_int_add(in);
+        double r6 = mem_dp_cpy(dn);
+        double r7 = mem_sp_cpy(fn);
+        double r8 = mem_int_cpy(in);
+        double r9 = mem_rt_cpy(dn);
 
         printf("%5d %6.0f %6.0f %6.0f %6.0f %6.0f %6.0f %6.0f %6.0f %6.0f %6.0f\n",
-               kb, results[0], results[1], results[2],
-               results[3], results[4], results[5],
-               results[6], results[7], results[8], results[9]);
+               kb, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9);
     }
 
     printf("\nDone.\n");

@@ -1,20 +1,25 @@
 use proc;
-use rt;
-use strings;
 
 export fn main() void = {
-	assert(proc::setpriority_process(0, 10) == 0);
-	let prio = proc::getpriority_process(0);
-	assert(prio == 10);
-	assert(proc::getppid() > 0);
-	assert(proc::pdeathsig(proc::SIGKILL) == 0);
-
-	let path = strings::toutf8("/bin/true\0"): *[*]u8;
-	let pid = proc::spawn_simple(path: proc::cstr);
+	// GetPid
+	let pid = proc::GetPid();
 	assert(pid > 0);
 
-	let status: i32 = 0;
-	let waited = proc::wait(pid, &status);
-	assert(waited == pid);
+	// MilliSleep
+	proc::MilliSleep(5);
+
+	// Create and Wait
+	let argv: [1]str = ["/bin/true"];
+	let child = proc::MustCreate("/bin/true", argv[0z..1z]);
+	assert(child > 0);
+	let status = proc::Wait(child, -1);
 	assert(status == 0);
+
+	// Priority
+	let min_p = proc::MinPriority();
+	let max_p = proc::MaxPriority();
+	assert(min_p <= max_p);
+	let cur_p = proc::GetPriority(0);
+	assert(cur_p >= min_p);
+	assert(cur_p <= max_p);
 };

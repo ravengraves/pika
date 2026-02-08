@@ -215,6 +215,7 @@ fn main() {
             proc1();
             let mut ch = b'A';
             while ch <= CHAR2_GLOB {
+                black_box(ch); // prevent loop elimination
                 if enumloc == func1(ch, b'C') {
                     proc6(IDENT1, &mut enumloc);
                 }
@@ -222,8 +223,9 @@ fn main() {
             }
             intloc3 = intloc2 * intloc1;
             let intloc2_new = intloc3 / intloc1;
-            let _ = 7 * (intloc3 - intloc2_new) - intloc1;
+            black_box(7 * (intloc3 - intloc2_new) - intloc1);
             proc2(&mut intloc1);
+            black_box(intloc1); // preserve Proc2 + final computations
         }
 
         let elapsed = start.elapsed().as_secs_f64();

@@ -476,20 +476,8 @@ static inline uint64_t rt_syscall5(uint64_t n, uint64_t a1, uint64_t a2, uint64_
 	return a0;
 }
 
-#else  // other architecture
-#define SYS_read  0
-#define SYS_write 0
-#define SYS_exit  0
-#define SYS_getppid 0
-#define SYS_prctl 0
-/* Stubs for non-Linux platforms */
-static inline uint64_t rt_syscall0(uint64_t n) { (void)n; return (uint64_t)-1; }
-static inline uint64_t rt_syscall1(uint64_t n, uint64_t a1) { (void)n; (void)a1; return (uint64_t)-1; }
-static inline uint64_t rt_syscall3(uint64_t n, uint64_t a1, uint64_t a2, uint64_t a3) { (void)n; (void)a1; (void)a2; (void)a3; return (uint64_t)-1; }
-static inline uint64_t rt_syscall5(uint64_t n, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5) {
-	(void)n; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
-	return (uint64_t)-1;
-}
+#else
+#error "rt.c (freestanding) requires Linux on x86_64, aarch64, or riscv64. Use rt_libc.c or rt_win64.c for hosted builds."
 #endif
 
 /* =========================================================================
@@ -518,30 +506,18 @@ static inline void rt_write_stderr(hare_str s) {
 
 /* Write to file descriptor */
 int64_t rt_write(int fd, const void* buf, size_t count) {
-#if defined(__linux__)
 	return (int64_t)rt_syscall3(SYS_write, (uint64_t)fd, (uint64_t)buf, (uint64_t)count);
-#else
-	(void)fd; (void)buf; (void)count;
-	return -1;
-#endif
 }
 
 /* Read from file descriptor */
 int64_t rt_read(int fd, void* buf, size_t count) {
-#if defined(__linux__)
 	return (int64_t)rt_syscall3(SYS_read, (uint64_t)fd, (uint64_t)buf, (uint64_t)count);
-#else
-	(void)fd; (void)buf; (void)count;
-	return -1;
-#endif
 }
 
 /* Exit process */
 __attribute__((noreturn))
 void rt_exit(int status) {
-#if defined(__linux__)
 	rt_syscall1(SYS_exit, (uint64_t)status);
-#endif
 	__builtin_trap();
 }
 
@@ -606,7 +582,7 @@ int rt_start_c(void) {
 	return 0;
 }
 
-// Hosted: default C entrypoint
+// Hosted: default C entrypoint (weak — overridable)
 __attribute__((weak))
 int main(void) {
 	rt_start_c();

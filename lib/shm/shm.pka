@@ -1,0 +1,10 @@
+export type Error = !void;
+export type Ptr = *opaque;
+
+export type CreateResult = (Ptr | Error);
+export type OpenResult = (Ptr | Error);
+
+export @symbol("pk_shm_create")  fn Create(name: str, sz: size) CreateResult;
+export @symbol("pk_shm_open")    fn Open(name: str, sz: size) OpenResult;
+export @symbol("pk_shm_close")   fn Close(name: str) void;
+export @symbol("pk_shm_del")     fn Del(name: str) void;

@@ -1,0 +1,468 @@
+// optimized constants determined using evolutionary search
+
+// --- tiny helpers ---
+
+// Absolute value
+export fn abs(x: f32) f32 = {
+	let i: u32 = *(&x: *u32);
+	// fisrt bit is sign
+	i = i & 0x7FFF_FFFFu32;
+	let y:f32 = *(&i: *f32);
+	return y;
+};
+
+export def INF = 0x7F80_0000u32;
+export def NEG_INF = 0xFF80_0000u32;
+
+// Check if float is NaN
+export fn isnan(x: f32) f32 = {
+	let i: u32 = *(&x: *u32);
+	let a: u32 = i & 0x7FFF_FFFFu32;
+	// NaN if absbits is strictly greater than +inf bit pattern
+	return a > INF;
+};
+
+// Check if float is infinite
+export fn isinf(x: f32) f32 = {
+	let i: u32 = *(&x: *u32);
+	let a: u32 = i & 0x7FFF_FFFFu32;
+	// NaN if absbits is strictly greater than +inf bit pattern
+	return a > INF;
+};
+
+// round down toward -INF
+export fn floor(x: f32) i32 = {
+	let i: i32 = x: i32;  // truncate toward zero
+	let f: f32 = i: f32;
+	if (x < 0.0 && f != x) {
+		return (f - 1.0):i32;
+	} else {
+		return f:i32;
+	};
+};
+
+// round up toward INF
+export fn ceil(x: f32) i32 = {
+	let i: i32 = x: i32;
+	let f: f32 = i: f32;
+	if (x < 0.0 && f != x) {
+		return (f + 1.0):i32;
+	} else {
+		return f:i32;
+	};
+};
+
+// math round
+export fn round(x: f32) i32 = {
+	if (x >= 0.0) {
+		return (x + 0.5):i32;
+	} else {
+		return (x - 0.5):i32;
+	};
+};
+
+// copy the sign from one float to another
+export fn copysign(mag: f32, sign: f32) f32 = {
+	let m:u32 = (*(&mag: *u32) & 0x7FFF_FFFFu32);
+	let s:u32 = (*(&sign: *u32) & 0x8000_0000u32);
+	let v:u32 = m | s;
+	return *(&v: *f32);
+};
+
+def RCP_0N = 0x7EF311BAu32;
+def RCP_2N = 0x7EF30DCCu32;
+def RSQRT_0N = 0x5F376427u32;
+def RSQRT_2N = 0x5F37599Au32;
+def SQRT_0N = 0x1FBB4F0Bu32;
+def SQRT_2N = 0x1FBB3AB0u32;
+
+// reciprocol of a number (0.00067% error)
+export fn recip(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = RCP_2N - i;
+	let y:f32 = *(&i: *f32);
+	y = y * (2.0f32 - x * y);
+	y = y * (2.0f32 - x * y);
+	return y;
+};
+
+// fast reciprocol of a number (5.05% error)
+export fn recip_fast(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = RCP_0N - i;
+	let y:f32 = *(&i: *f32);
+	return y;
+};
+
+// reciprocol square root (1/sqrt(x)) of a number (0.00048% error)
+export fn rsqrt(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = RSQRT_2N - (i >> 1);
+	let y:f32 = *(&i: *f32);
+	y = y * (1.5f32 - 0.5f32 * x * y * y);
+	y = y * (1.5f32 - 0.5f32 * x * y * y);
+	return y;
+};
+
+// fast reciprocol square root (1/sqrt(x)) of a number (5% error)
+export fn rsqrt_fast(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = RSQRT_0N - (i >> 1);
+	let y:f32 = *(&i: *f32);
+	return y;
+};
+
+// square root (0.00048% error)
+export fn sqrt(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = RSQRT_2N - (i >> 1);
+	let y:f32 = *(&i: *f32);
+	y = y * (1.5f32 - 0.5f32 * x * y * y);
+	y = y * (1.5f32 - 0.5f32 * x * y * y);
+	return x*y;  // sqrt(x) = x/sqrt(x)
+};
+
+// fast square root (3.48% error)
+export fn sqrt_fast(x: f32) f32 = {
+	let i:u32 = *(&x: *u32);
+	i = (i >> 1) + SQRT_0N;
+	let y:f32 = *(&i: *f32);
+	return y;
+};
+
+def LN2 = 0.69314718055994528623f32;
+def INV_LN2 = 1.44269504088896340736f32;
+
+// ln(m) for m in [1,2), t=(m-1)/(m+1): ln(m) ~ 2*(c0*t + c1*t^3 + c2*t^5 + c3*t^7) */
+def LOG_C0 = 1.0000011730f32; // Taylor: 1.0
+def LOG_C1 = 0.3331588525f32; // Taylor: 1/3 ~ 0.3333
+def LOG_C2 = 0.2032034977f32; // Taylor: 1/5 = 0.2
+def LOG_C3 = 0.1397988930f32; // Taylor: 1/7 ~ 0.1429
+
+// exp(r) for r in [-ln2/2, ln2/2]: exp(r) ~ c0 + c1*r + c2*r^2 + c3*r^3 + c4*r^4 + c5*r^5 */
+def EXP_C0 = 0.9999995571f32; // Taylor: 1.0
+def EXP_C1 = 1.0000005574f32; // Taylor: 1.0
+def EXP_C2 = 0.5000163151f32; // Taylor: 0.5
+def EXP_C3 = 0.1666656788f32; // Taylor: 1/6 ~ 0.1667
+def EXP_C4 = 0.0416993585f32; // Taylor: 1/24 ~ 0.0417
+def EXP_C5 = 0.0083249631f32; // Taylor: 1/120 ~ 0.0083
+
+// Exponentiate: e^x, 0.000059% error
+export fn exp(x: f32) f32 = {
+	// x = k * ln(2) + R , r in [-ln(2)/2, ln(2)/2]
+	let half = 0.5f32;
+	if (x < 0.0f32) {
+		half = -half;
+	};
+	let k:i32 = (x * INV_LN2 + half):i32;
+
+	// polynomial approx
+	let r = x - k:f32 * LN2;
+	let p = EXP_C5;
+	p = p * r + EXP_C4;
+	p = p * r + EXP_C3;
+	p = p * r + EXP_C2;
+	p = p * r + EXP_C1;
+	p = p * r + EXP_C0;
+
+	// reconstruct exp(x) = exp(r) * 2^k
+	let u: i32 = (k + 127i32) << 23i32;
+	let result = *(&u: *f32) * p;
+	return result;
+};
+
+// compute y = log(x), 0.000158% error
+export fn log(x: f32) f32 = {
+	// Extract exponent and mantissa: x = m * 2^e, m in [1,2)
+	let v: u32 = *(&x: *u32);
+	let e: i32 = (((v >> 23i32) & 0xFFu32): i32) - 127i32;
+	v = (v & 0x007F_FFFFi32) | 0x3F80_0000i32;
+	let m = *(&v: *f32);
+
+	// t = (m-1) / (m+1) in [0, 1/3]
+	let t: f32 = (m - 1.0f32) / (m + 1.0f32);
+	let t2 = t * t;
+
+	// poly approx
+	let a = LOG_C3;
+	a = a * t2 + LOG_C2;
+	a = a * t2 + LOG_C1;
+	a = a * t2 + LOG_C0;
+
+	// reconstruct ln(x) = ln(m) + e^ln(2)
+	return 2.0f32 * t * a + e:f32 * LN2;
+};
+
+// power using exp and log
+export fn pow(x: f32, y: f32) f32 = {
+	return exp(y * log(x));
+};
+
+// --- fast exp / log wrappers for pow_fast ---
+export fn exp_fast(x: f32) f32 = {
+	return exp(x);
+};
+
+export fn log_fast(x: f32) f32 = {
+	return log(x);
+};
+
+// fast power using fast exp and log
+export fn pow_fast(x: f32, y: f32) f32 = {
+	return exp_fast(y * log_fast(x));
+};
+
+// --- wrap to [-pi, pi] (assumes x not astronomically huge) ---
+export fn wrap_pi(x: f32) f32 = {
+	let k:i32 = round(x * INV_TAU);
+	return x - (k:f32) * TAU;
+};
+
+// TRIG CONSTANTS
+/// constants (float32) --- */
+export def PI       = 3.14159265358979323846f32;
+export def TAU      = 6.28318530717958647692f32;
+export def PI_O_2     = 1.57079632679489661923f32;
+export def TWO_O_PI = 0.63661977236758134308f32; // 2/pi
+export def INV_TAU  = 0.15915494309189533577f32; // 1/(2pi)
+def FOUR_O_PI = 1.2732395447351628f32;
+def PI_O_4 = 0.7853981633974483f32;
+
+// TRIG OPTIMIZED COEFFICIENTS (derived from evolutionary optimization)
+// sin(x) on [-pi/4, pi/4]
+def SIN_C0 = 1.00000002f32;
+def SIN_C1 = -0.166667186f32;
+def SIN_C2 = 0.00833525463f32;
+def SIN_C3 = -0.000198607875f32;
+
+// cos(x) on [-pi/4, pi/4]
+def COS_C0 = 1.00000023f32;
+def COS_C1 = -0.50000436f32;
+def COS_C2 = 0.0416777f32;
+def COS_C3 = -0.00138201f32;
+
+def TAN_C0 = 1.00001374f32;
+def TAN_C1 = 0.33250106f32;
+def TAN_C2 = 0.14157085f32;
+def TAN_C3 = 0.0265363f32;
+def TAN_C4 = 0.0555204f32;
+
+// [atan(x)] on [-1, 1] - evolutionary + Nelder-Mead refinement
+def ATAN_C0 = 1.00002819f32;
+def ATAN_C1 = -0.33301428f32;
+def ATAN_C2 = 0.190849f32;
+def ATAN_C3 = -0.10012556f32;
+def ATAN_C4 = 0.02770223f32;
+
+// asin(x) on [-0.5, 0.5]
+def ASIN_C0 = 0.1666788f32;
+def ASIN_C1 = 0.07487722f32;
+def ASIN_C2 = 0.04353529f32;
+def ASIN_C3 = 0.04288391f32;
+
+
+// sin(x) - computes sin(x) using sincos
+export fn sin(a: f32) f32 = {
+	let r = sincos(a);
+	return r.s;
+};
+
+// cos(x) - computes cos(x) using sincos
+export fn cos(a: f32) f32 = {
+	let r = sincos(a);
+	return r.c;
+};
+
+def PIO2_HI: f32 = 1.5707963267f32;      // high bits
+def PIO2_LO: f32 = 7.5497894159e-08f32;     // low bits (pi/2 - PIO2_HI)
+
+// tan(x) approximation - error 0.001379%
+export fn tan(x: f32) f32 = {
+	let q: i32 = round(x * TWO_O_PI);
+	let qf = q:f32;
+	let r = x - qf * PIO2_HI;
+	r = r - qf * PIO2_LO;  // two-step subtraction preserves precision
+
+	let r2 = r * r;
+	let r4 = r2 * r2;
+	let r8 = r4 * r4;
+
+	let t = r * (TAN_C0 + TAN_C1 * r2 + TAN_C2 * r4 + TAN_C3 * (r4 * r2) + TAN_C4 * r8);
+	let t_recip = -recip(t);
+
+	let ret = t;
+	if (q & 1i32) {
+		ret = t_recip;
+	};
+
+	return ret;
+};
+
+
+export type SincosResult = struct {
+	s: f32,
+	c: f32
+};
+
+// sincos(x) - computes both sin and cos using the optimized
+// polynomials.
+export fn sincos(x: f32) SincosResult = {
+	let rnd = 0.0f32;
+	if (x < 0.0f32) {
+		rnd = -0.5f32;
+	} else {
+		rnd = 0.5f32;
+	};
+	let q = (x * TWO_O_PI + rnd):i32;
+	let r = x - (q:f32) * PI_O_2;
+
+	let r2 = r * r;
+	let r4 = r2 * r2;
+	let r6 = r4 * r2;
+
+	let sin_r = r * (SIN_C0 + SIN_C1 * r2 + SIN_C2 * r4 + SIN_C3 * r6);
+	let cos_r = COS_C0 + COS_C1 * r2 + COS_C2 * r4 + COS_C3 * r6;
+
+	let s_neg = ((q >> 1i32) & 1i32);
+	let c_neg = (((q + 1i32) >> 1i32) & 1i32);
+	let swap = (q & 1i32);
+
+	// swap / sign based on quadrant.
+	let cos_r_fin = 0.0f32;
+	let sin_r_fin = 0.0f32;
+	if (swap) {
+		cos_r_fin = sin_r;
+		sin_r_fin = cos_r;
+	} else {
+		cos_r_fin = cos_r;
+		sin_r_fin = sin_r;
+	};
+
+	let cos_r_signed = 0.0f32;
+	if(c_neg) {
+		cos_r_signed = -cos_r_fin;
+	} else {
+		cos_r_signed = cos_r_fin;
+	};
+
+	let sin_r_signed = 0.0f32;
+	if(s_neg) {
+		sin_r_signed = -sin_r_fin;
+	} else {
+		sin_r_signed = sin_r_fin;
+	};
+
+	return SincosResult {
+		c = cos_r_signed,
+		s = sin_r_signed
+	};
+};
+
+// atan(x) approximation - error 0.0057%
+export fn atan(x: f32) f32 = {
+	let ax = abs(x);
+	let t: f32 = 0.0f32;
+	let hi: f32 = 0.0f32;
+
+	if (ax <= 1.0f32) {
+		t = ax;
+		hi = 0.0f32;
+	} else {
+		t = 1.0f32 / ax;
+		hi = PI_O_2;
+	};
+
+	let t2 = t * t;
+	let t4 = t2 * t2;
+	let t8 = t4 * t4;
+
+	let a = t * (ATAN_C0 + ATAN_C1 * t2 + ATAN_C2 * t4 + ATAN_C3 * (t4 * t2) + ATAN_C4 * t8);
+
+	let result: f32 = 0.0f32;
+	if (hi == 0.0f32) {
+		result = a;
+	} else {
+		result = hi - a;
+	};
+
+	return copysign(result, x);
+};
+
+// asin(x) approximation - error 0.000034%
+export fn asin(x: f32) f32 = {
+	let ax = abs(x);
+	let t = sqrt((1.0f32 - ax) * 0.5f32);
+
+	// small |X|
+	let x2 = x * x;
+	let x4 = x2 * x2;
+	let x6 = x4 * x2;
+	let asin_small = x + (x * x2) * (ASIN_C0 + ASIN_C1 * x2 + ASIN_C2 * x4 + ASIN_C3 * x6);
+
+	// big |x|
+	let t2 = t * t;
+	let t4 = t2 * t2;
+	let t6 = t4 * t2;
+	let a = t + (t * t2) * (ASIN_C0 + ASIN_C1 * t2 + ASIN_C2 * t4 + ASIN_C3 * t6);
+	let asin_big = copysign(PI_O_2 - 2.0f32 * a, x);
+
+	let result = asin_small;
+	if (ax > 0.5f32) {
+		result = asin_big;
+	};
+	return result;
+};
+
+// acos(x) - uses identity acos(x)=PI/2 - asin(x). Error same as asin: 0.000034%
+export fn acos(x: f32) f32 = {
+	return PI_O_2 - asin(x);
+};
+
+
+// atan2(y, x) - uses atan and quadrant adjustment
+export fn atan2(y: f32, x: f32) f32 = {
+	let ax = abs(x);
+	let ay = abs(y);
+
+	let ay_ax = ay * recip(ax);
+	let ax_ay = ax * recip(ay);
+
+	let t: f32 = ay_ax;
+	let hi: f32 = 0.0;
+	if (ay > ax) {
+		t = ax_ay;
+		hi = PI_O_2;
+	};
+
+	let t2 = t * t;
+	let t4 = t2 * t2;
+	let t8 = t4 * t4;
+
+	let a = t * (ATAN_C0 + ATAN_C1 * t2 + ATAN_C2 * t4 + ATAN_C3 * (t4 * t2) + ATAN_C4 * t8);
+	let a_rev = hi - a;
+
+	if (hi != 0.0f32) {
+		a = a_rev;
+	};
+
+	if (x < 0.0f32) {
+		a = PI - a;
+	};
+
+	if (y < 0.0f32) {
+		a = -a;
+	};
+
+	let a_x0 = copysign(PI_O_2, y);
+	if(abs(y) == 0.0f32) {
+		a_x0 = 0.0f32;
+	};
+
+	// check x = 0
+	let ret = a;
+	if (x == 0.0f32) {
+		ret = a_x0;
+	};
+
+	return ret;
+};

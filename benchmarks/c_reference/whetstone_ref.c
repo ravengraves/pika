@@ -31,6 +31,14 @@ void p3(SPDP *x, SPDP *y, SPDP *z, SPDP t, SPDP t1, SPDP t2);
 void pout(char title[22], float ops, int type, SPDP checknum,
                 SPDP time, int calibrate, int section);
 
+static long n3_seeds[256];
+
+__attribute__((noinline))
+void init_n3_seeds(void) {
+    for (int i = 0; i < 256; i++) n3_seeds[i] = i & 1;
+    __asm__ volatile("" ::: "memory");
+}
+
 static SPDP loop_time[9];
 static SPDP loop_mops[9];
 static SPDP loop_mflops[9];
@@ -175,6 +183,7 @@ void whetstones(long xtra, long x100, int calibrate)
                          1,e1[3],timeb,calibrate,2);
 
     /* Section 3, Conditional jumps */
+    init_n3_seeds();
     j = 1;
     timea = what_time();
     {
@@ -183,11 +192,15 @@ void whetstones(long xtra, long x100, int calibrate)
             for(i=0; i<n3; i++)
             {
                if(j==1)       j = 2;
-               else           j = 3;
+               else if(j==0)  j = 3;
+               else           break;
                if(j>2)        j = 0;
                else           j = 1;
                if(j<1)        j = 1;
                else           j = 0;
+               n3_seeds[i & 255] = j;
+               __asm__ volatile("" ::: "memory");
+               j = n3_seeds[(i+1) & 255];
             }
         }
     }
@@ -210,6 +223,7 @@ void whetstones(long xtra, long x100, int calibrate)
                l = (l-k) * (k+j);
                e1[l-2] = j + k + l;
                e1[k-2] = j * k * l;
+               __asm__ volatile("" : "+r"(j), "+r"(k), "+r"(l));
             }
         }
     }
@@ -270,6 +284,7 @@ void whetstones(long xtra, long x100, int calibrate)
             for(i=0;i<n7;i++)
             {
                po(e1,j,k,l);
+               __asm__ volatile("" ::: "memory");
             }
         }
     }

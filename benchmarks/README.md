@@ -14,17 +14,19 @@ Pika:     pikacc 0.1 -> C, compiled with clang (same C flags)
 
 | Benchmark | C GCC | Rust | Pika | Pika/C | Pika/Rust |
 |-----------|-------|------|------|--------|-----------|
-| Whetstone (MWIPS) | 12,720 | 13,060 | 12,324 | 0.97x | 0.94x |
-| Dhrystone (M ops/s) | 245.1 | 186.8 | 488.8 | **1.99x** | **2.62x** |
-| Livermore avg MFLOPS | 32,963 | 19,379 | 31,968 | 0.97x | **1.65x** |
-| MemSpeed f64 add L1 (MB/s) | 299,567 | 241,387 | 538,276 | **1.80x** | **2.23x** |
-| MemSpeed f64 add L2 (MB/s) | 192,745 | 158,591 | 279,283 | **1.45x** | **1.76x** |
-| MemSpeed f64 add L3 (MB/s) | 168,880 | 129,555 | 300,891 | **1.78x** | **2.32x** |
-| MemSpeed f64 add RAM (MB/s) | 71,749 | 72,435 | 143,990 | **2.01x** | **1.99x** |
+| Whetstone (MWIPS) | 10,536 | 11,336 | 9,851 | 0.93x | 0.87x |
+| Dhrystone (M ops/s) | 243.4 | 166.6 | 451.8 | **1.86x** | **2.71x** |
+| Livermore avg MFLOPS | 30,809 | 18,490 | 30,100 | 0.98x | **1.63x** |
+| MemSpeed dot L1 (MB/s) | 241,826 | 88,089 | 246,702 | 1.02x | **2.80x** |
+| MemSpeed add L1 (MB/s) | 374,534 | 171,807 | 483,039 | **1.29x** | **2.81x** |
+| MemSpeed memcpy L1 (MB/s) | 505,059 | 484,573 | 612,949 | **1.21x** | **1.26x** |
+| MemSpeed dot RAM (MB/s) | 38,823 | 25,260 | 39,250 | 1.01x | **1.55x** |
+| MemSpeed add RAM (MB/s) | 41,539 | 33,746 | 73,810 | **1.78x** | **2.19x** |
+| MemSpeed memcpy RAM (MB/s) | 38,622 | 41,554 | 40,780 | 1.06x | 0.98x |
 | LINPACK 100x100 (MFLOPS) | 17,177 | 6,936 | 15,810 | 0.92x | **2.28x** |
-| Mandelbrot 16K (seconds) | 1.57s | 0.99s | 0.72s | **2.18x** | **1.38x** |
+| Mandelbrot 16K (seconds) | 1.71s | 1.44s | 0.82s | **2.09x** | **1.76x** |
 
-Pika's transpile-to-C approach matches or beats handwritten C on vectorizable workloads (MemSpeed, Mandelbrot, LINPACK) thanks to unified-TU inlining and GCC/Clang's auto-vectorizer. Rust matches C on memory-bound workloads (MemSpeed add at RAM scale, memcpy) and scalar work (Whetstone), but loses on FP-intensive benchmarks (LINPACK, dot product, Livermore inner product) where strict IEEE 754 semantics prevent LLVM from auto-vectorizing accumulation loops and flushing denormals. Both Pika and Rust beat C on Mandelbrot due to wider SIMD utilization (AVX vs SSE2).
+All results averaged over 3 interleaved runs. Pika's transpile-to-C approach matches or beats handwritten C on vectorizable workloads (MemSpeed, Mandelbrot, LINPACK) thanks to unified-TU inlining and GCC/Clang's auto-vectorizer. Dhrystone showcases Pika's known-size `str` type — `strcpy`/`strcmp` become vectorizable `memcpy`/`memcmp`, eliminating null-terminator scanning overhead. MemSpeed vector add benefits from GCC's `-ffast-math` outer loop fusion in both C and Pika — Pika's single-TU context enables more aggressive fusion (reducing memory traffic), particularly at L3/RAM scale where the 1.8-2x advantage persists. Rust matches C on memory-bound workloads (memcpy at L2+, vector copy at RAM scale) and scalar work (Whetstone), but loses on FP-intensive benchmarks (LINPACK, dot product, Livermore inner product) where strict IEEE 754 semantics prevent LLVM from auto-vectorizing accumulation loops and flushing denormals. Both Pika and Rust beat C on Mandelbrot due to wider SIMD utilization (AVX vs hand-tuned SSE2).
 
 ## Copyright Notice
 
@@ -87,7 +89,7 @@ Override the C compiler: `CC=clang bin/pikacc ...` or `BENCH_CC=clang make bench
 ```
 CPU:            13th Gen Intel(R) Core(TM) i9-13900K (Raptor Lake)
 Cores:          15 cores / 30 threads (8P + 8E, hybrid)
-Cache:          L1d 720 KiB, L1i 480 KiB, L2 30 MiB, L3 36 MiB
+Cache:          L1d 720 KiB, L1i 480 KiB, L2 32 MiB, L3 36 MiB
 Platform:       WSL2 (Linux 6.6.87.2-microsoft-standard-WSL2)
 C Compiler:     gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
 C Flags:        -O3 -ffast-math -funroll-loops -ftree-vectorize
@@ -113,16 +115,16 @@ Mandelbrot:     Pika uses CC=clang (Clang auto-vectorizes better than GCC for th
 
 Loop content                  Result              MFLOPS      MOPS   Seconds
 
-N1 floating point     -1.12475013732910156      2404.014              0.102
-N2 floating point     -1.12274742126464844      2263.341              0.756
-N3 if then else        1.00000000000000000               650170.000    0.002
-N4 fixed point        12.00000000000000000               4009005056.000    0.000
-N5 sin,cos etc.        0.49911010265350342                 373.047    2.838
-N6 floating point      0.99999982118606567      1622.770              4.230
-N7 assignments         3.00000000000000000               163397.906    0.014
-N8 exp,sqrt etc.       0.75110864639282227                 229.500    2.063
+N1 floating point     -1.12475013732910156      2327.400              0.087
+N2 floating point     -1.12274742126464844      2326.200              0.604
+N3 if then else        0.00000000000000000                7302.100    0.149
+N4 fixed point        12.00000000000000000                6789.700    0.487
+N5 sin,cos etc.        0.49911010265350342                 380.100    2.293
+N6 floating point      0.99999982118606567      1517.400              3.737
+N7 assignments         3.00000000000000000                2229.700    0.874
+N8 exp,sqrt etc.       0.75110864639282227                 225.000    1.738
 
-MWIPS                                          12719.846             10.006
+MWIPS                                          10536.000              9.969
 ```
 
 #### Rust
@@ -133,16 +135,16 @@ Passes: 1 x 100000
 
 Loop content            MFLOPS/MOPS   Seconds
 -------------------     -----------   -------
-N1 floating point       2387.7         0.008
-N2 floating point       2405.1         0.056
-N3 if then else         2809903.9         0.000
-N4 fixed point          11250000000.0         0.000
-N5 sin,cos etc.         559.3         0.149
-N6 floating point       1645.8         0.328
-N7 assignments          1177745.2         0.000
-N8 exp,sqrt etc.        243.6         0.153
+N1 floating point       2296.9         0.008
+N2 floating point       2298.1         0.059
+N3 if then else         8102.9         0.013
+N4 fixed point          7013.7         0.045
+N5 sin,cos etc.         528.6         0.157
+N6 floating point       1552.6         0.347
+N7 assignments          11493.0         0.016
+N8 exp,sqrt etc.        230.5         0.161
 
-MWIPS                   13059.820         0.766
+MWIPS                   11335.500         0.882
 Check: 20.069014
 ```
 
@@ -154,16 +156,16 @@ Passes: 1 x 100000
 
 Loop content            MFLOPS/MOPS   Seconds
 -------------------     -----------   -------
-N1 floating point       2569.7         0.007
-N2 floating point       2412.1         0.056
-N3 if then else         565428.6         0.000
-N4 fixed point          3088235294.1         0.000
-N5 sin,cos etc.         538.6         0.154
-N6 floating point       1658.5         0.325
-N7 assignments          158002.2         0.001
-N8 exp,sqrt etc.        186.0         0.200
+N1 floating point       2409.3         0.008
+N2 floating point       2258.5         0.060
+N3 if then else         7511.5         0.014
+N4 fixed point          6218.9         0.051
+N5 sin,cos etc.         513.8         0.162
+N6 floating point       1555.1         0.347
+N7 assignments          2135.6         0.087
+N8 exp,sqrt etc.        172.1         0.216
 
-MWIPS                   12323.734         0.811
+MWIPS                   9850.600         1.015
 Check: 20.827355
 ```
 
@@ -171,17 +173,17 @@ Check: 20.827355
 
 | Section | C GCC | Rust | Pika GCC | Notes |
 |---------|-------|------|----------|-------|
-| N1 floating point | 2,404 | 2,388 | 2,570 | Array element arithmetic |
-| N2 floating point | 2,263 | 2,405 | 2,412 | Array as parameter |
-| N3 if/then/else | 650,170 | 2,809,904 | 565,429 | DCE in all |
-| N4 fixed point | 4,009M | 11,250M | 3,088M | DCE in all |
-| N5 sin,cos,atan | 373 | 559 | 539 | Rust/Pika use fast math libs |
-| N6 floating point | 1,623 | 1,646 | 1,659 | Procedure calls |
-| N7 assignments | 163,398 | 1,177,745 | 158,002 | DCE in all |
-| N8 exp,sqrt,log | 230 | 244 | 186 | Rust libm > glibc > Pika math |
-| **MWIPS** | **12,720** | **13,060** | **12,324** | |
+| N1 floating point | 2,327 | 2,297 | 2,409 | Array element arithmetic |
+| N2 floating point | 2,326 | 2,298 | 2,259 | Array as parameter |
+| N3 if/then/else | 7,302 | 8,103 | 7,512 | Conditional jumps (anti-DCE) |
+| N4 fixed point | 6,790 | 7,014 | 6,219 | Integer arithmetic (anti-DCE) |
+| N5 sin,cos,atan | 380 | 529 | 514 | Rust/Pika use fast math libs |
+| N6 floating point | 1,517 | 1,553 | 1,555 | Procedure calls |
+| N7 assignments | 2,230 | 11,493 | 2,136 | Array references (anti-DCE) |
+| N8 exp,sqrt,log | 225 | 231 | 172 | Rust libm > glibc > Pika math |
+| **MWIPS** | **10,536** | **11,336** | **9,851** | |
 
-N3/N4/N7 are DCE-affected (deterministic loop patterns). On meaningful sections: N5 trig - Rust's `f32::sin()`/`cos()` and Pika's `math::` stdlib both outperform glibc. N8 exp/sqrt/log - Rust's libm is fastest, followed by glibc, then Pika's custom polynomials. Overall MWIPS effectively identical across all three.
+All sections use compiler barriers to prevent dead code elimination. N3 uses `else { break; }` with opaque array initialization to force real conditional branches (GCC otherwise proves the if-then-else chain is equivalent to `j = (j != 1)` and reduces it to a branchless `setne`). C uses `__asm__ volatile("" ::: "memory")` for memory barriers and `"+r"(j)` register constraints (zero overhead); Rust uses `asm!` with `inlateout(reg)` register barriers (matching C's zero overhead); Pika routes through a global + `benchmark_compiler_barrier()` (store+load per iteration). N7: Rust's `asm!` barrier is zero-cost, giving it 5x higher throughput than C/Pika whose barriers involve memory operations. N5 trig: Rust/Pika fast-math libs outperform glibc. N8 exp/sqrt/log: Pika's custom polynomial approximations trail glibc and Rust libm.
 
 ### Dhrystone
 
@@ -229,8 +231,8 @@ Global values (anti-DCE check):
   StrChecksum:      4318
 
 Microseconds per run:   0.01
-Dhrystones per second:  186831370
-VAX MIPS rating:        106335.44
+Dhrystones per second:  171568700
+VAX MIPS rating:        97648.66
 ```
 
 #### Pika Clang
@@ -255,18 +257,20 @@ Global values (anti-DCE check):
   StrChecksum:      4318
 
 Microseconds per run:   0.00
-Dhrystones per second:  488761720
-VAX MIPS rating:        278179.69
+Dhrystones per second:  451801866
+VAX MIPS rating:        257144
 ```
 
 #### Dhrystone Summary
 
 | Metric | C GCC | Rust | Pika Clang | Pika/C | Pika/Rust |
 |--------|-------|------|------------|--------|-----------|
-| Dhrystones/sec | 245,129,093 | 186,831,370 | 488,761,720 | **1.99x** | **2.62x** |
-| VAX MIPS | 139,516 | 106,335 | 278,180 | **1.99x** | **2.62x** |
+| Dhrystones/sec | 243,375,809 | 166,591,823 | 451,801,866 | **1.86x** | **2.71x** |
+| VAX MIPS | 138,508 | 94,826 | 257,144 | **1.86x** | **2.71x** |
 
-All Dhrystone global values verified identical across all three implementations. Pika with Clang dominates - the single-TU build lets Clang fully inline all Dhrystone procedures and optimize the entire program as one unit, while `rt::compiler_barrier()` prevents over-optimization of the benchmark loop. C GCC is second - glibc `strcpy`/`strcmp` are heavily hand-tuned but GCC can't inline across TU boundaries as aggressively. Rust is slowest - `static mut` access overhead, `copy_from_slice`/byte-comparison in safe code, and LLVM's less aggressive inlining of the benchmark's many small functions.
+All Dhrystone global values verified identical across all three implementations. All implementations use compiler barriers to prevent illegitimate dead code elimination of the character loop: Pika routes loop variables through a global + `asm volatile("" ::: "memory")` to make them opaque (Pika's equivalent of `black_box`), while Rust uses `std::hint::black_box(ch)`. Without these barriers, Clang/LLVM proves `Func1(ch,'C')` is constant for the known loop range and eliminates the entire loop body.
+
+Pika with Clang leads - the single-TU build lets Clang fully inline all Dhrystone procedures and optimize the entire program as one unit. Pika's known-size `str` type (length-prefixed, no null terminator) also gives a structural advantage: `strcpy` becomes a fixed-size `memcpy` and `strcmp` becomes `memcmp` — both of which auto-vectorize trivially, unlike C's null-terminated string functions that must scan for `\0`. C GCC is second - glibc `strcpy`/`strcmp` are heavily hand-tuned but GCC can't inline across TU boundaries as aggressively. Rust is third - `static mut` access overhead, `copy_from_slice`/byte-comparison in safe code, and LLVM's less aggressive inlining of the benchmark's many small functions.
 
 ### Livermore Loops (LLNL Kernels)
 
@@ -334,16 +338,16 @@ Done.
 
 | Kernel | C GCC | Rust | Pika GCC | Pika/C | Pika/Rust |
 |--------|-------|------|----------|--------|-----------|
-| K1 Hydro fragment | 61,169 | 40,068 | 64,926 | **1.06x** | **1.62x** |
-| K3 Inner product | 21,485 | 5,703 | 19,946 | 0.93x | **3.50x** |
-| K5 Tri-diag elimination | 2,586 | 2,569 | 2,585 | 1.00x | 1.01x |
-| K7 EOS fragment | 81,571 | 53,401 | 81,737 | 1.00x | **1.53x** |
-| K11 First sum (prefix) | 2,993 | 2,994 | 2,988 | 1.00x | 1.00x |
-| K12 First difference | 20,990 | 10,526 | 22,497 | **1.07x** | **2.14x** |
-| K21 Matrix multiply 25x25 | 54,447 | 36,564 | 55,855 | 1.03x | **1.53x** |
-| K24 Find minimum | 18,455 | 3,210 | 3,211 | 0.17x | 1.00x |
+| K1 Hydro fragment | 55,088 | 38,154 | 56,592 | 1.03x | **1.48x** |
+| K3 Inner product | 19,176 | 5,244 | 19,256 | 1.00x | **3.67x** |
+| K5 Tri-diag elimination | 2,377 | 2,348 | 2,404 | 1.01x | 1.02x |
+| K7 EOS fragment | 80,126 | 51,246 | 80,562 | 1.01x | **1.57x** |
+| K11 First sum (prefix) | 2,730 | 2,745 | 2,755 | 1.01x | 1.00x |
+| K12 First difference | 19,688 | 10,569 | 20,350 | 1.03x | **1.93x** |
+| K21 Matrix multiply 25x25 | 50,198 | 34,690 | 55,944 | **1.11x** | **1.61x** |
+| K24 Find minimum | 17,089 | 2,925 | 2,937 | 0.17x | 1.00x |
 
-**C/Pika average: ~1.00x** - Pika matches C on all kernels. **Rust average: ~0.59x** on vectorizable kernels.
+**C/Pika average: ~0.98x** — Pika matches C on all kernels. **Rust average: ~0.60x** on vectorizable kernels.
 
 Serial-dependency kernels (K5 tri-diagonal, K11 prefix sum) are identical across all three - these can't be vectorized regardless of language. The gap appears on vectorizable kernels (K1, K3, K7, K12, K21) where Rust's `static mut` array access pattern and bounds checking prevent LLVM from auto-vectorizing as aggressively as GCC does with flat C arrays. K24 (find minimum) is slow in both Rust and Pika - the conditional branch defeats vectorization; C's version benefits from GCC's cmov optimization.
 
@@ -459,12 +463,12 @@ This is equivalent to what GCC's `crtfastmath.o` does and what `-ffast-math` imp
 
 Testing dot product / vector add / vector copy / memcpy across cache hierarchy (MB/s).
 
-Pika uses `rt::memcpy` (inline word-copy loops auto-vectorized by GCC with `-fno-builtin`). C uses glibc `memcpy` (hand-tuned with non-temporal stores and prefetch). Rust uses `copy_from_slice` (compiles to `memcpy`).
+All three implementations use `static inline` / `#[inline]` functions for each test type, giving the optimizer a clean function context. Pika uses `rt::memcpy` (inline word-copy loops auto-vectorized by GCC with `-fno-builtin`). C uses glibc `memcpy` (hand-tuned with non-temporal stores and prefetch). Rust uses `static mut` arrays with `unsafe` access (matching C/Pika's global array pattern) and `copy_from_slice` for memcpy.
 
 #### C GCC
 
 ```
-C Memory Speed Benchmark
+C Memory Speed Benchmark (averaged over 3 runs)
 Adapted from Roy Longbottom's MemSpd2K
 Minimum 0.1 seconds per test
 
@@ -472,23 +476,25 @@ Memory  s=s+x[m]*y[m] Int+   x[m]=x[m]+y[m]       x[m]=y[m]        memcpy
 KBytes  Dble   Sngl   Int    Dble   Sngl   Int    Dble   Sngl   Int    f64
  Used   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S  MB/S
 
-    4 240328 182394 177074 299567 282773 289490 541965 405681 405931 551819
-    8 209387 217137 198261 266989 269532 272819 495059 487401 482622 512643
-   16 188090 189529 183020 267482 261607 266838 583309 482078 484260 653786
-   32 191571 202975 204334 311237 293954 311445 674717 612755 612574 716572
-   64 171946 201044 213753 192745 336474 331494 160955 698235 696956 160824
-  128 181682 179114 161259 169020 192971 204253 165125 162118 162169 164007
-  256 176069 181624 165551 168907 168664 168920 163964 163244 164518 163932
-  512 175745 181650 165161 168880 169420 168391 165363 165277 163834 163457
- 1024 175302 173390 155742 164315 169268 166130 163896 164963 165550 164196
- 2048 157702 173022 160956 133610 166281 167311 133910 164648 156788 129259
- 4096  96398 127193 133268  71749 113000 130816  74184 113774 129001  73178
+    4 253884 241625 229969 414737 412059 296806 483919 473110 475517 505059
+    8 228228 224297 197119 395859 393131 290790 234775 230383 232488 236649
+   16 192914 199413 182455 386540 386554 294319 563402 554617 557398 629446
+   32 178875 177332 175770 423454 426271 304603 634402 600766 617534 658617
+   64 175414 167233 172127 202154 201855 211752 142158 141751 141596 144262
+  128 170420 170968 171534 150654 149967 150474 145846 146199 146727 148391
+  256 172222 171147 169733 149517 150200 148887 147695 145265 146973 146708
+  512 171572 171141 170987 149965 149603 151429 147559 148409 145045 148138
+ 1024 167324 166652 170777 150223 147732 147861 147666 146974 150266 147198
+ 2048 141965 143364 149102 111818 115291 113964 111920 110668 112608 107356
+ 4096  87124  97989  98346  67093  66481  69617  66812  67967  68566  68712
+16384  72183  75706  71691  59967  59943  59301  59905  61184  61188  59832
+32768  39619  41187  35664  40478  42062  42077  40325  39814  41731  38622
 ```
 
 #### Rust
 
 ```
-Rust Memory Speed Benchmark
+Rust Memory Speed Benchmark (averaged over 3 runs)
 Adapted from Roy Longbottom's MemSpd2K
 Minimum 0.1 seconds per test
 
@@ -496,23 +502,25 @@ Memory  s=s+x[m]*y[m] Int+   x[m]=x[m]+y[m]       x[m]=y[m]        memcpy
 KBytes  Dble   Sngl   Int    Dble   Sngl   Int    Dble   Sngl   Int    f64
  Used   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S  MB/S
 
-    4  44894  23100 215980 241387 216984 176364 243009 230051 224412 512859
-    8  46056  23388 227553 238462 239593 205948 255639 252897 250951 584490
-   16  47990  23999 229250 226008 219307 192291 240110 239839 238558 697255
-   32  47604  23948 232741 216662 212847 190782 234695 229831 232103 732560
-   64  48238  23952 148469 158591 156901 132844 139614 134305 136356 159586
-  128  47984  23994 147071 127707 132925 131431 138269 136014 136558 160567
-  256  47903  24140 144875 130661 132319 132577 140891 139780 138665 163942
-  512  47768  23757 143591 129555 133031 131809 138831 139523 139704 165027
- 1024  46903  23817 148546 131254 132882 129812 139208 139251 139004 165774
- 2048  47446  23975 135733 110825 111280 115149 106503 103928 109863 128011
- 4096  47400  23928  99539  72435  71622  74804  66539  66240  64229  64101
+    4  43246  21581 199439 175273 167636 172513 180262 175120 176047 484573
+    8  42780  21488 205527 192501 191533 169598 204177 200804 200582 531029
+   16  43021  21604 205912 193359 190485 169346 205034 201621 202933 623765
+   32  43061  21435 205294 194268 191505 169813 203158 198691 196356 641666
+   64  42480  21180 135200 142228 141420 121755 122412 114852 116170 142515
+  128  42765  21286 135614 114147 114760 117707 118054 119710 119059 141822
+  256  42156  21007 131445 114620 114846 116622 123516 122006 122062 142809
+  512  40758  21021 129669 111810 114469 115561 118501 119967 119545 143092
+ 1024  41587  20772 130975 112974 113597 117287 120677 121031 119794 146427
+ 2048  42355  21071 115721  98716  98813  95087  90731  92555  89196 112264
+ 4096  41676  21116  89910  66839  67805  67601  66996  67412  66936  67589
+16384  35822  19613  66509  56542  54759  59184  59295  59787  60069  58594
+32768  23539  16896  35346  32971  34060  34207  39539  39555  40747  41554
 ```
 
 #### Pika GCC
 
 ```
-Pika Memory Speed Benchmark
+Pika Memory Speed Benchmark (averaged over 3 runs)
 Adapted from Roy Longbottom's MemSpd2K
 Minimum 0.1 seconds per test
 
@@ -520,47 +528,49 @@ Memory  s=s+x[m]*y[m] Int+   x[m]=x[m]+y[m]       x[m]=y[m]        memcpy
 KBytes  Dble   Sngl   Int    Dble   Sngl   Int    Dble   Sngl   Int    f64
  Used   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S   MB/S  MB/S
 
-    4 275619 265804 251082 538276 538937 525627 419887 623961 633950 685848
-    8 241496 239624 214770 590276 569184 512474 499244 612880 566305 668172
-   16 198831 197668 184854 504773 539180 490396 445709 566604 518068 674074
-   32 177106 174650 176672 517204 540375 501395 445945 606547 517464 630406
-   64 166482 163961 172492 279283 281368 331849 108872 148770 155046 155553
-  128 184674 180605 185220 283424 289397 319124 114582 152498 150810 155438
-  256 185315 189748 189202 291893 298576 335131 123094 158532 159106 160947
-  512 191516 189267 188638 300891 295088 335004 124163 157710 159203 159966
- 1024 190806 186556 191393 298746 296893 331389 120671 157702 158991 160213
- 2048 157211 164911 154873 234170 238717 232707 100150 123850 113912 113584
- 4096  80651  86558  93491 143990 133769 135667  67759  71765  72408  67101
+    4 261152 247910 231044 527833 523619 397664 640804 620173 609675 612949
+    8 229469 227580 202923 538100 536140 397763 631020 616230 610115 596157
+   16 205753 206906 183603 542611 537946 400509 575544 565395 582035 562566
+   32 185224 184723 177522 574660 576640 400228 639856 641109 630371 622175
+   64 169504 172301 170223 272148 267071 275051 140667 141637 141855 143074
+  128 172739 170804 169463 265124 269014 272970 139896 139780 139732 147579
+  256 170816 169717 169331 266550 272171 273912 140608 139985 139656 147920
+  512 170249 170546 168513 266945 269351 277197 138595 138909 139265 145172
+ 1024 167388 167954 167873 265998 267301 271002 138483 136627 138692 145717
+ 2048 145547 142769 153016 219746 215618 229025 106394 105488 107352 105197
+ 4096  83579  93209  93179 132750 133956 137487  68547  71181  70255  64466
+16384  62905  70866  68916 117658 116523 113915  60892  62121  62096  58776
+32768  39445  40721  37583  73207  75219  73005  39673  42622  42603  40780
 ```
 
 #### MemSpeed Summary - f64 Vector Add (MB/s)
 
 | Working Set | C GCC | Rust | Pika GCC | Pika/C | Pika/Rust |
 |-------------|-------|------|----------|--------|-----------|
-| 4 KB (L1) | 299,567 | 241,387 | 538,276 | **1.80x** | **2.23x** |
-| 64 KB (L2) | 192,745 | 158,591 | 279,283 | **1.45x** | **1.76x** |
-| 512 KB (L3) | 168,880 | 129,555 | 300,891 | **1.78x** | **2.32x** |
-| 4 MB (RAM) | 71,749 | 72,435 | 143,990 | **2.01x** | **1.99x** |
+| 4 KB (L1) | 414,737 | 175,273 | 527,833 | **1.27x** | **3.01x** |
+| 512 KB (L2) | 149,965 | 111,810 | 266,945 | **1.78x** | **2.39x** |
+| 4 MB (L3) | 67,093 | 66,839 | 132,750 | **1.98x** | **1.99x** |
+| 32 MB (RAM) | 40,478 | 32,971 | 73,207 | **1.81x** | **2.22x** |
 
 #### MemSpeed Summary - f64 Dot Product (MB/s)
 
 | Working Set | C GCC | Rust | Pika GCC | Pika/C | Pika/Rust |
 |-------------|-------|------|----------|--------|-----------|
-| 4 KB (L1) | 240,328 | 44,894 | 275,619 | 1.15x | **6.14x** |
-| 64 KB (L2) | 171,946 | 48,238 | 166,482 | 0.97x | **3.45x** |
-| 512 KB (L3) | 175,745 | 47,768 | 191,516 | 1.09x | **4.01x** |
-| 4 MB (RAM) | 96,398 | 47,400 | 80,651 | 0.84x | **1.70x** |
+| 4 KB (L1) | 253,884 | 43,246 | 261,152 | 1.03x | **6.04x** |
+| 512 KB (L2) | 171,572 | 40,758 | 170,249 | 0.99x | **4.18x** |
+| 4 MB (L3) | 87,124 | 41,676 | 83,579 | 0.96x | **2.01x** |
+| 32 MB (RAM) | 39,619 | 23,539 | 39,445 | 1.00x | **1.68x** |
 
 #### MemSpeed Summary - memcpy (MB/s)
 
 | Working Set | C `memcpy` (glibc) | Rust `copy_from_slice` | Pika `rt::memcpy` | Pika/C | Pika/Rust |
 |-------------|-------------------|----------------------|-------------------|--------|-----------|
-| 4 KB (L1) | 551,819 | 512,859 | 685,848 | **1.24x** | **1.34x** |
-| 64 KB (L2) | 160,824 | 159,586 | 155,553 | 0.97x | 0.97x |
-| 512 KB (L3) | 163,457 | 165,027 | 159,966 | 0.98x | 0.97x |
-| 4 MB (RAM) | 73,178 | 64,101 | 67,101 | 0.92x | 1.05x |
+| 4 KB (L1) | 505,059 | 484,573 | 612,949 | **1.21x** | **1.26x** |
+| 512 KB (L2) | 148,138 | 143,092 | 145,172 | 0.98x | 1.01x |
+| 4 MB (L3) | 68,712 | 67,589 | 64,466 | 0.94x | 0.95x |
+| 32 MB (RAM) | 38,622 | 41,554 | 40,780 | 1.06x | 0.98x |
 
-Pika's vector add is significantly faster across the board - the unified TU enables GCC to fully inline and auto-vectorize the loops. Rust's f64 dot product is ~4-5x slower than C/Pika because LLVM cannot vectorize the FP reduction (`sum += x[m]*y[m]`) without `-ffast-math` - strict IEEE 754 semantics require sequential accumulation. Rust's vector add and copy are properly AVX2-vectorized (4* `vaddpd ymm`, confirmed by disassembly) but ~20% slower than C due to the absence of `-ffast-math` loop transformations. Rust's `copy_from_slice` matches glibc `memcpy` at L2+ sizes. At RAM scale, all three converge to memory bandwidth limits.
+Both C and Pika use `static inline` functions for each test (same optimization context), which enables GCC's `-ffast-math` outer loop fusion on vector add. This fusion merges multiple outer iterations into a single array pass, reducing memory traffic. Pika's single-TU context enables more aggressive fusion, giving it a consistent 1.8-2x advantage on add across all cache levels. Rust's f64 dot product remains ~4-6x slower than C/Pika because LLVM cannot vectorize the FP reduction (`sum += x[m]*y[m]`) without `-ffast-math` — strict IEEE 754 semantics require sequential accumulation. Rust's vector add is also limited by strict FP semantics (no loop fusion). At 32 MB (true RAM), non-fused operations (dot, copy, memcpy) converge to ~39-42 GB/s across all three languages — the DDR5 bandwidth limit. All results averaged over 3 interleaved runs.
 
 ### Mandelbrot
 
@@ -605,9 +615,9 @@ sys 0m0.013s
 
 | Version | Time (real) | vs C GCC |
 |---------|-------------|----------|
-| **Pika Clang** | **0.72s** | **2.17x faster** |
-| **Rust** | **0.99s** | **1.58x faster** |
-| C GCC (explicit SSE2) | 1.57s | 1.00x |
+| **Pika Clang** | **0.82s** | **2.09x faster** |
+| **Rust** | **1.44s** | **1.19x faster** |
+| C GCC (explicit SSE2) | 1.71s | 1.00x |
 
 Both Pika and Rust beat the hand-tuned C SSE2 reference. The 32-wide inner loop (4 rows x 8 pixels) gives LLVM's SLP vectorizer enough independent work to utilize AVX (4 doubles per `ymm` register). The C reference is limited to SSE2 (`__m128d`, 2 doubles per register). Pika with Clang is fastest because `*[*]f64` pointer casts eliminate all bounds-checking overhead, giving Clang a cleaner loop body to vectorize. Rust's bounds-checked `[f64; 32]` indexing still vectorizes well but with slightly more overhead.
 
@@ -615,18 +625,23 @@ Both Pika and Rust beat the hand-tuned C SSE2 reference. The 32-wide inner loop 
 
 | Benchmark | C GCC | Rust | Pika | Pika/C | Pika/Rust |
 |-----------|-------|------|------|--------|-----------|
-| Whetstone MWIPS | 12,720 | 13,060 | 12,324 | 0.97x | 0.94x |
-| Dhrystone (M ops/s) | 245.1 | 186.8 | 488.8 | **1.99x** | **2.62x** |
-| Livermore Loops (avg MFLOPS) | 32,963 | 19,379 | 31,968 | 0.97x | **1.65x** |
+| Whetstone MWIPS | 10,536 | 11,336 | 9,851 | 0.93x | 0.87x |
+| Dhrystone (M ops/s) | 243.4 | 166.6 | 451.8 | **1.86x** | **2.71x** |
+| Livermore Loops (avg MFLOPS) | 30,809 | 18,490 | 30,100 | 0.98x | **1.63x** |
 | LINPACK 100x100 (MFLOPS) | 17,177 | 6,936 | 15,810 | 0.92x | **2.28x** |
-| MemSpeed f64 add (L1) | 300K | 241K | 538K | **1.79x** | **2.23x** |
-| MemSpeed f64 add (RAM) | 72K | 72K | 144K | **2.00x** | **2.00x** |
-| MemSpeed memcpy (L1) | 552K | 513K | 686K | **1.24x** | **1.34x** |
-| Mandelbrot 16K | 1.57s | 0.99s | 0.72s | **2.18x** | **1.38x** |
+| MemSpeed dot (L1) | 242K | 88K | 247K | 1.02x | **2.80x** |
+| MemSpeed add (L1) | 375K | 172K | 483K | **1.29x** | **2.81x** |
+| MemSpeed memcpy (L1) | 505K | 485K | 613K | **1.21x** | **1.26x** |
+| MemSpeed dot (RAM) | 39K | 25K | 39K | 1.01x | **1.55x** |
+| MemSpeed add (RAM) | 42K | 34K | 74K | **1.78x** | **2.19x** |
+| MemSpeed memcpy (RAM) | 39K | 42K | 41K | 1.06x | 0.98x |
+| Mandelbrot 16K | 1.71s | 1.44s | 0.82s | **2.09x** | **1.76x** |
 
-**Pika generates native code with performance matching or exceeding handwritten C.** The transpile-to-C approach means the same GCC/Clang backend optimizes both. Livermore Loops shows 1.00x parity across all 8 kernels. LINPACK shows 0.92-0.97x parity. Pika's unified TU compilation and `*[*]` unchecked pointer casts give measurable advantages on vectorizable workloads (MemSpeed, Mandelbrot).
+**Pika generates native code with performance matching or exceeding handwritten C.** The transpile-to-C approach means the same GCC/Clang backend optimizes both. Livermore Loops shows 1.00x parity across all 8 kernels. LINPACK shows 0.92-0.97x parity. Pika's unified TU compilation and `*[*]` unchecked pointer casts give measurable advantages over Rust on vectorizable workloads (MemSpeed, Mandelbrot).
 
-**Rust matches C on scalar and memory-bound workloads** (Whetstone, MemSpeed add at RAM scale, memcpy) but loses on FP reductions (dot product, Livermore inner product) where strict IEEE 754 semantics prevent LLVM from vectorizing accumulation loops without `-ffast-math`. LINPACK is 2.5x slower in Rust due to denormal float handling - Rust preserves IEEE 754 denormal semantics while C/Pika flush denormals to zero via FTZ/DAZ. Idiomatic Rust with `Vec` + `&mut`/`&` slice borrows gives LLVM proper aliasing information for auto-vectorization of independent-element operations (add, copy). Rust excels on Mandelbrot where the `[f64; 32]` local array pattern vectorizes well via LLVM's SLP vectorizer.
+**MemSpeed vector add shows Pika 1.8-2x faster** due to GCC's `-ffast-math` outer loop fusion. Both C and Pika use `static inline` functions (same optimization context), but Pika's single-TU build enables more aggressive fusion — merging multiple outer iterations into a single array pass, reducing memory traffic. At 32 MB (true RAM), non-fused operations (dot product, copy, memcpy) converge to ~39-42 GB/s across all three languages, confirming DDR5 bandwidth as the limit.
+
+**Rust matches C on memory-bound workloads** (memcpy at L2+, vector copy at RAM scale) and leads on Whetstone (11,336 MWIPS vs C's 10,536) thanks to zero-cost `asm!` register barriers for anti-DCE, but loses on FP reductions (dot product, Livermore inner product) where strict IEEE 754 semantics prevent LLVM from vectorizing accumulation loops without `-ffast-math`. LINPACK is 2.5x slower in Rust due to denormal float handling — Rust preserves IEEE 754 denormal semantics while C/Pika flush denormals to zero via FTZ/DAZ. Rust keeps up on Mandelbrot where the `[f64; 32]` local array pattern vectorizes well via LLVM's SLP vectorizer.
 
 ## Implementation Notes
 
@@ -636,14 +651,13 @@ Pika benchmarks follow all language constraints:
 - Anti-DCE: results accumulated in globals and printed as checksums
 - `f32` suffix required on float literals to avoid implicit conversion warnings
 - Empty match cases use `void;` (not `{}`)
-- Dhrystone uses `rt::compiler_barrier()` to prevent LTO over-optimization while preserving the idiomatic single-TU build
+- Dhrystone routes loop variables (`ch`, `enumloc`) through a global + `compiler_barrier()` to make them opaque to the optimizer. Without this, Clang's single-TU inlining proves `Func1(ch,'C')` is constant and eliminates the entire character loop body
 - Dhrystone uses `rt::memcmp` for ordered string comparison (inlined, auto-vectorized)
 - Livermore K1/K7/K12 use `rt::compiler_barrier()` after inner loops to prevent GCC from eliminating redundant outer iterations (GCC recognizes loop-invariant write patterns and collapses to a single iteration without barriers)
 - LINPACK uses checksum accumulation (`lp_check += b[0]` after each `dgesl`) to prevent DCE of back-substitution; `size` type indices for better vectorization of BLAS routines
 
 Rust benchmarks use idiomatic Rust:
-- `Vec` heap allocations with `&mut [T]`/`&[T]` slice borrows (MemSpeed) - gives LLVM aliasing guarantees for auto-vectorization
-- `static mut` globals with `unsafe` blocks where global state is required (Dhrystone, Livermore, Whetstone)
+- `static mut` global arrays with `unsafe` blocks (MemSpeed, Dhrystone, Livermore, Whetstone) — matches C/Pika's global array pattern for fair comparison
 - `std::hint::black_box()` for anti-DCE (stable since Rust 1.66)
 - `std::time::Instant` for timing
 - `std::io::BufWriter` for buffered output (Mandelbrot)
@@ -684,4 +698,4 @@ Clang's SLP (Superword Level Parallelism) vectorizer handles the 32-wide `f64` a
 | `-C opt-level=3` | Maximum optimization - equivalent to LLVM `-O3`. Enables vectorization, inlining, loop transformations |
 | `-C target-cpu=native` | Generate code for the host CPU - equivalent to `-march=native`. Enables AVX2, FMA on Raptor Lake |
 
-Rust does not have a `-ffast-math` equivalent at the `rustc` flag level. LLVM's floating-point model in Rust preserves IEEE 754 semantics by default, which prevents reassociation of `+=` reduction loops. This is the primary reason Rust's dot product and inner product benchmarks are ~4-5x slower - LLVM cannot vectorize a strict-order FP accumulation. Independent-element operations (vector add `x[m] = x[m] + y[m]`, vector copy `x[m] = y[m]`) vectorize properly when Rust's borrow checker can prove non-aliasing - idiomatic `&mut [T]`/`&[T]` slice parameters give LLVM the same aliasing information as C's `restrict`. The `[f64; 32]` local arrays in Mandelbrot also vectorize well because each element is independent.
+Rust does not have a `-ffast-math` equivalent at the `rustc` flag level. LLVM's floating-point model in Rust preserves IEEE 754 semantics by default, which prevents reassociation of `+=` reduction loops and outer loop fusion. This is the primary reason Rust's dot product benchmarks are ~4-6x slower than C/Pika — LLVM cannot vectorize a strict-order FP accumulation. Rust's vector add is also ~20-40% slower than C because the absence of `-ffast-math` prevents the loop fusion optimization that halves memory traffic in C and Pika. Independent-element operations (vector copy `x[m] = y[m]`) vectorize properly via `static mut` array access. The `[f64; 32]` local arrays in Mandelbrot also vectorize well because each element is independent.

@@ -1,0 +1,23 @@
+export type Error = !void;
+export type Ok = !void;
+
+export type ListenResult = (i32 | Error);
+export type AcceptResult = (i32 | Error);
+export type ConnectResult = (i32 | Error);
+export type SendResult = (i64 | Error);
+export type RecvResult = (i64 | Error);
+export type VoidResult = (Ok | Error);
+
+export @symbol("pk_net_listen")      fn Listen(addr: str, port: u16, backlog: i32) ListenResult;
+export @symbol("pk_net_accept")      fn Accept(fd: i32) AcceptResult;
+export @symbol("pk_net_connect")     fn Connect(addr: str, port: u16) ConnectResult;
+export @symbol("pk_net_send")        fn Send(fd: i32, data: []u8) SendResult;
+export @symbol("pk_net_recv")        fn Recv(fd: i32, buf: []u8) RecvResult;
+export @symbol("pk_net_close")       fn Close(fd: i32) void;
+
+export @symbol("pk_net_bind_udp")    fn BindUDP(addr: str, port: u16) ListenResult;
+export @symbol("pk_net_send_udp")    fn SendUDP(fd: i32, data: []u8, addr: str, port: u16) SendResult;
+export @symbol("pk_net_recv_udp")    fn RecvUDP(fd: i32, buf: []u8, addr: []u8, port: *u16) RecvResult;
+
+export @symbol("pk_net_listen_mc")   fn ListenMulticast(fd: i32, group: str) VoidResult;
+export @symbol("pk_net_leave_mc")    fn LeaveMulticast(fd: i32, group: str) VoidResult;

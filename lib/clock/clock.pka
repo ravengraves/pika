@@ -1,0 +1,54 @@
+// clock — Timing and benchmarks
+// Now() returns platform counter (rdtsc on x86, cntvct on arm, QPC on win).
+// TimeNS() returns monotonic nanoseconds (clock_gettime/QPC).
+// Calibration uses TimeNS() (gettime-based) — no sleep required.
+
+export @symbol("pk_clock_count")    fn Now() u64;
+export @symbol("pk_clock_time_ns")  fn TimeNS() i64;
+
+let NS_PER_COUNT: f64 = -1.0f64;
+
+// Since returns seconds elapsed since start_tick.
+export fn Since(start_tick: u64) f64 = {
+    return Dt(Now(), start_tick);
+};
+
+// Dt returns the delta in seconds between two ticks.
+export fn Dt(stop_tick: u64, start_tick: u64) f64 = {
+    if (NS_PER_COUNT < 0.0f64) {
+        Calibrate(0.005f64);
+    };
+    if (stop_tick <= start_tick) { return 0.0f64; };
+    let delta = stop_tick - start_tick;
+    let ns = (delta: f64) * NS_PER_COUNT;
+    return ns / 1000000000.0f64;
+};
+
+// Calibrate determines the ns-per-count ratio.
+export fn Calibrate(duration_s: f64) void = {
+    if (duration_s <= 0.0f64) { return; };
+    let target_ns: i64 = (duration_s * 1000000000.0f64): i64;
+    if (target_ns <= 0) { return; };
+
+    let start_ns: i64 = TimeNS();
+    if (start_ns < 0) { return; };
+    let start_tick: u64 = Now();
+
+    let elapsed_ns: i64 = 0;
+    for (elapsed_ns < target_ns) {
+        let now_ns: i64 = TimeNS();
+        if (now_ns < 0) { return; };
+        elapsed_ns = now_ns - start_ns;
+    };
+
+    let stop_tick: u64 = Now();
+    if (stop_tick <= start_tick) { return; };
+
+    let stop_ns: i64 = TimeNS();
+    if (stop_ns < 0) { return; };
+
+    let delta_ns: i64 = stop_ns - start_ns;
+    if (delta_ns <= 0) { return; };
+
+    NS_PER_COUNT = (delta_ns: f64) / ((stop_tick - start_tick): f64);
+};

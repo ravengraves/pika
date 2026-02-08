@@ -1,0 +1,25 @@
+// io — Input and polling
+
+export type Timeout = !void;
+export type Error = !void;
+
+export def STDIN: i32 = 0;
+export def STDOUT: i32 = 1;
+export def STDERR: i32 = 2;
+
+export def READABLE: i16 = 1;
+export def WRITABLE: i16 = 4;
+
+export type PollFd = struct {
+    fd: i32,
+    events: i16,
+    revents: i16,
+};
+
+export type PollResult = (i16 | Timeout | Error);
+export type PollManyResult = (i32 | Timeout | Error);
+export type InputResult = (str | Timeout | Error);
+
+export @symbol("pk_io_poll")     fn Poll(fd: i32, timeout: i32 = -1, watch: i16 = 1) PollResult;
+export @symbol("pk_io_pollmany") fn PollMany(fds: []PollFd, timeout: i32 = -1) PollManyResult;
+export @symbol("pk_io_input")    fn Input(buf: []u8, prompt: str = "", timeout: i32 = -1) InputResult;

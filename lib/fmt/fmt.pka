@@ -1,0 +1,222 @@
+use strings;
+
+// fmt — Formatted output
+// Buffer-based formatting. User provides []u8 storage.
+// Print/Println/EPrint/Prints/Printsln are C-backed (platform-specific).
+// All other functions are pure Pika.
+
+export type Buffer = struct {
+    buf: []u8,
+    index: size,
+};
+
+export @symbol("pk_fmt_print")    fn Print(b: *Buffer) void;
+export @symbol("pk_fmt_println")  fn Println(b: *Buffer) void;
+export @symbol("pk_fmt_eprint")   fn EPrint(b: *Buffer) void;
+export @symbol("pk_fmt_prints")   fn Prints(s: str) void;
+export @symbol("pk_fmt_printsln") fn Printsln(s: str) void;
+
+export fn New(buf: []u8) Buffer = {
+    return Buffer { buf = buf, index = 0z };
+};
+
+export fn Clear(b: *Buffer) void = {
+    b.index = 0z;
+};
+
+export fn ToStr(b: *Buffer) str = {
+    return strings::fromutf8_unsafe(b.buf[0z..b.index]);
+};
+
+export fn Write(b: *Buffer, s: str) void = {
+    let data = strings::toutf8(s);
+    let i: size = 0z;
+    let cap: size = b.buf.len;
+    for (i < data.len && b.index < cap) {
+        b.buf[b.index] = data[i];
+        b.index = b.index + 1z;
+        i = i + 1z;
+    };
+};
+
+export fn Wbool(b: *Buffer, val: bool) void = {
+    if (val) {
+        Write(b, "true");
+    } else {
+        Write(b, "false");
+    };
+};
+
+export fn Wi64(b: *Buffer, val: i64, mode: str = "dec", pad: i32 = 0) void = {
+    if (val < 0) {
+        Write(b, "-");
+        Wu64(b, (-(val + 1): u64) + 1u64, mode, pad);
+    } else {
+        Wu64(b, val: u64, mode, pad);
+    };
+};
+
+export fn Wu64(b: *Buffer, val: u64, mode: str = "dec", pad: i32 = 0) void = {
+    let tmp: [24]u8 = [0...];
+    let pos: i32 = 23;
+    let base: u64 = 10u64;
+
+    let mdata = strings::toutf8(mode);
+    if (mdata.len >= 1z && mdata[0z] == 'h') {
+        base = 16u64;
+    } else if (mdata.len >= 1z && mdata[0z] == 'o') {
+        base = 8u64;
+    };
+
+    if (val == 0u64) {
+        tmp[pos: size] = '0';
+        pos = pos - 1;
+    } else {
+        let v: u64 = val;
+        for (v > 0u64 && pos >= 0) {
+            let digit: u64 = v % base;
+            if (digit < 10u64) {
+                tmp[pos: size] = ('0': u8) + (digit: u8);
+            } else {
+                tmp[pos: size] = ('a': u8) + ((digit - 10u64): u8);
+            };
+            pos = pos - 1;
+            v = v / base;
+        };
+    };
+
+    let digits: i32 = 23 - pos;
+    for (digits < pad && pos >= 0) {
+        tmp[pos: size] = '0';
+        pos = pos - 1;
+        digits = digits + 1;
+    };
+
+    let start: size = (pos + 1): size;
+    Write(b, strings::fromutf8_unsafe(tmp[start..24z]));
+};
+
+fn Wf64_fixed(b: *Buffer, val: f64, dec: i32, eng_trim: bool) void = {
+    if (val == 0.0f64) {
+        Write(b, "0");
+        if (dec > 0) {
+            Write(b, ".");
+            let i: i32 = 0;
+            for (i < dec) {
+                Write(b, "0");
+                i = i + 1;
+            };
+        };
+        return;
+    };
+
+    let whole: u64 = val: u64;
+    let frac_part: f64 = val - (whole: f64);
+
+    Wu64(b, whole);
+
+    if (dec > 0) {
+        Write(b, ".");
+
+        let d: i32 = 0;
+        let last_nonzero: i32 = -1;
+        let frac_digits: [24]u8 = [0...];
+        let actual_dec: i32 = dec;
+        if (actual_dec > 20) {
+            actual_dec = 20;
+        };
+
+        let fp: f64 = frac_part;
+        for (d < actual_dec) {
+            fp = fp * 10.0f64;
+            let digit: i32 = fp: i32;
+            if (digit > 9) { digit = 9; };
+            if (digit < 0) { digit = 0; };
+            frac_digits[d: size] = ('0': u8) + (digit: u8);
+            fp = fp - (digit: f64);
+            if (digit != 0) {
+                last_nonzero = d;
+            };
+            d = d + 1;
+        };
+
+        let end: i32 = actual_dec;
+        if (eng_trim && last_nonzero >= 0) {
+            end = last_nonzero + 1;
+        } else if (eng_trim) {
+            end = 1;
+        };
+
+        d = 0;
+        for (d < end) {
+            let ch: [1]u8 = [frac_digits[d: size]];
+            Write(b, strings::fromutf8_unsafe(ch[0z..1z]));
+            d = d + 1;
+        };
+    };
+};
+
+export fn Wf64(b: *Buffer, val: f64, dec: i32 = 10, mode: str = "eng") void = {
+    let v: f64 = val;
+
+    if (v < 0.0f64) {
+        Write(b, "-");
+        v = -v;
+    };
+
+    let mdata = strings::toutf8(mode);
+    let is_sci: bool = (mdata.len >= 1z && mdata[0z] == 's');
+    let is_eng: bool = (mdata.len >= 1z && mdata[0z] == 'e');
+
+    if (is_sci && v != 0.0f64) {
+        let exp: i32 = 0;
+        for (v >= 10.0f64) {
+            v = v / 10.0f64;
+            exp = exp + 1;
+        };
+        for (v < 1.0f64) {
+            v = v * 10.0f64;
+            exp = exp - 1;
+        };
+        Wf64_fixed(b, v, dec, false);
+        Write(b, "e");
+        Wi64(b, exp: i64);
+    } else {
+        Wf64_fixed(b, v, dec, is_eng);
+    };
+};
+
+export fn F(b: *Buffer, f: str, s1: str = "", s2: str = "", s3: str = "", s4: str = "", s5: str = "") void = {
+    let fdata = strings::toutf8(f);
+    let arg_idx: i32 = 0;
+    let i: size = 0z;
+    for (i < fdata.len) {
+        if (fdata[i] == '%' && (i + 1z) < fdata.len) {
+            let next: u8 = fdata[i + 1z];
+            if (next == '%') {
+                Write(b, "%");
+                i = i + 2z;
+            } else {
+                if (arg_idx == 0) { Write(b, s1); }
+                else if (arg_idx == 1) { Write(b, s2); }
+                else if (arg_idx == 2) { Write(b, s3); }
+                else if (arg_idx == 3) { Write(b, s4); }
+                else if (arg_idx == 4) { Write(b, s5); };
+                arg_idx = arg_idx + 1;
+                i = i + 2z;
+            };
+        } else if (fdata[i] == '%') {
+            if (arg_idx == 0) { Write(b, s1); }
+            else if (arg_idx == 1) { Write(b, s2); }
+            else if (arg_idx == 2) { Write(b, s3); }
+            else if (arg_idx == 3) { Write(b, s4); }
+            else if (arg_idx == 4) { Write(b, s5); };
+            arg_idx = arg_idx + 1;
+            i = i + 1z;
+        } else {
+            let ch: [1]u8 = [fdata[i]];
+            Write(b, strings::fromutf8_unsafe(ch[0z..1z]));
+            i = i + 1z;
+        };
+    };
+};

@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 199309L
 check: check-lang check-stdlib check-math
 
 check-lang:
@@ -6,33 +5,27 @@ check-lang:
 	for i in test/*.pka; do \
 		base="$${i%.*}" && \
 		echo building build/$$base ... && \
-		bin/pikacc $$i -o build/$$base && \
+		bin/pikacc $$i -O1 -o build/$$base && \
 		build/$$base; \
 	done
 
 check-stdlib:
 	mkdir -p build/test/stdlib
-	set -e;
-	for i in ring_writer ring_server ring_client ring_supervisor; \
-		do \
-			echo building $$i ... && \
-			bin/pikacc \
-				test/stdlib/ring_common.pka \
-				test/stdlib/$$i.pka \
-				-o build/test/stdlib/$$i; \
+	set -e; \
+	for i in test/stdlib/*.pka; do \
+		base="$${i%.*}" && \
+		out="build/$$base" && \
+		echo building $$out ... && \
+		bin/pikacc $$i -O1 -o $$out && \
+		$$out; \
 	done
 
-	cd build/test/stdlib && \
-		timeout 1s ./ring_supervisor > out.txt || true && \
-		if [ "$$(wc -l out.txt | awk '{print $$1}')" -lt 10 ]; \
-		then echo "Not enough lines" && false; \
-		fi
-
 check-math:
-	cat stdlib/math.pka | ./bin/pika2c > build/test/math.c
+	mkdir -p build/test
+	{ printf '%s\n' '-N math'; cat lib/math/math.pka; } | ./pika2c > build/test/math.c
 	cat test/math_test.c >> build/test/math.c
-	gcc -std=c11 -Wall -Wextra -O3 -fno-strict-aliasing \
-		-O3 -ffast-math -funroll-loops -ftree-vectorize -march=native -mtune=native \
+	gcc -std=c11 -Wall -Wextra -O1 -fno-strict-aliasing \
+		-ffast-math -funroll-loops -march=native -mtune=native \
 		-finline-functions  \
 		 build/test/math.c -lm -o build/test/math_test
 	./build/test/math_test
@@ -100,7 +93,7 @@ bench: bench-math
 
 bench-math:
 	mkdir -p build/benchmarks
-	cat stdlib/math.pka | ./bin/pika2c > build/benchmarks/math_benchmark.c
+	{ printf '%s\n' '-N math'; cat lib/math/math.pka; } | ./pika2c > build/benchmarks/math_benchmark.c
 	cat benchmarks/math_benchmark.c >> build/benchmarks/math_benchmark.c
 
 	echo ===================== GCC =====================
@@ -122,7 +115,6 @@ bench-math:
 
 
 clean:
-	# Remove generated objects and binaries
 	rm -rf build/
 
 .PHONY: check check-lang check-stdlib check-math bench bench-math \

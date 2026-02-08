@@ -1,0 +1,13 @@
+export type Error = !void;
+export type Ok = !void;
+export type RandomResult = (Ok | Error);
+
+export @symbol("pk_crypt_random") fn Random(buf: []u8) RandomResult;
+
+export fn MustRandom(buf: []u8) void = {
+    let r = Random(buf);
+    match (r) {
+    case Ok => void;
+    case Error => abort("crypt::Random failed");
+    };
+};

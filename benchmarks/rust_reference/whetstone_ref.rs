@@ -2,6 +2,7 @@
 // Adapted from Roy Longbottom's C/C++ Whetstone Benchmark
 // Single precision version matching Pika whetstone.pka
 
+use std::arch::asm;
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -26,6 +27,16 @@ fn whet_p3(x: &mut f32, y: &mut f32, z: &mut f32, t: f32, t1: f32, t2: f32) {
     *x = t * (*x + *y);
     *y = t1 * (*x + *y);
     *z = (*x + *y) / t2;
+}
+
+static mut N3_SEEDS: [i64; 256] = [0; 256];
+
+#[inline(never)]
+fn init_n3_seeds() {
+    unsafe {
+        for i in 0..256 { N3_SEEDS[i] = (i & 1) as i64; }
+        black_box(&raw const N3_SEEDS);
+    }
 }
 
 fn main() {
@@ -91,13 +102,19 @@ fn main() {
     println!("N2 floating point       {:.1}         {:.3}", mf2, sec2);
 
     // --- Section 3: Conditional jumps ---
+    init_n3_seeds();
     let mut j: i64 = 1;
     let ts3 = Instant::now();
     for _ in 0..xtra {
-        for _ in 0..n3 {
-            if j == 1 { j = 2; } else { j = 3; }
+        for i in 0..n3 {
+            if j == 1 { j = 2; } else if j == 0 { j = 3; } else { break; }
             if j > 2 { j = 0; } else { j = 1; }
             if j < 1 { j = 1; } else { j = 0; }
+            unsafe {
+                N3_SEEDS[(i & 255) as usize] = j;
+                asm!("", options(nostack, preserves_flags));
+                j = N3_SEEDS[((i + 1) & 255) as usize];
+            }
         }
     }
     whet_check += j as f64;
@@ -118,6 +135,7 @@ fn main() {
             l = (l - k) * (k + j);
             e1[(l - 2) as usize] = (j + k + l) as f32;
             e1[(k - 2) as usize] = (j * k * l) as f32;
+            unsafe { asm!("/* {0} {1} {2} */", inlateout(reg) j, inlateout(reg) k, inlateout(reg) l, options(nostack, preserves_flags)); }
         }
     }
     whet_check += e1[0] as f64 + j as f64;
@@ -167,6 +185,7 @@ fn main() {
     for _ in 0..xtra {
         for _ in 0..n7 {
             whet_po(&mut e1, j as usize, k as usize, l as usize);
+            unsafe { asm!("", options(nostack, preserves_flags)); }
         }
     }
     whet_check += e1[0] as f64 + e1[1] as f64 + e1[2] as f64;

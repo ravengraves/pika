@@ -11,29 +11,29 @@
 use rt;
 use strings;
 
-// 4MB per array for f64 (524288 * 8 bytes)
-// 4MB per array for f32/i32 (1048576 * 4 bytes)
-def MEMD_MAX: i32 = 524288;
-def MEMS_MAX: i32 = 1048576;
+// 16MB per array for f64 (2097152 * 8 bytes)
+// 16MB per array for f32/i32 (4194304 * 4 bytes)
+def MEMD_MAX: i32 = 2097152;
+def MEMS_MAX: i32 = 4194304;
 
-let mem_xd: [524288]f64 = [0...];
-let mem_yd: [524288]f64 = [0...];
-let mem_xs: [1048576]f32 = [0...];
-let mem_ys: [1048576]f32 = [0...];
-let mem_xi: [1048576]i32 = [0...];
-let mem_yi: [1048576]i32 = [0...];
+let mem_xd: [2097152]f64 = [0...];
+let mem_yd: [2097152]f64 = [0...];
+let mem_xs: [4194304]f32 = [0...];
+let mem_ys: [4194304]f32 = [0...];
+let mem_xi: [4194304]i32 = [0...];
+let mem_yi: [4194304]i32 = [0...];
 
 def MEM_MIN_SECS: f64 = 0.1f64;
 
 // f64 element counts for each test size
 // Memory per pair of f64 arrays = kd * 16 bytes
 //   250 -> 4KB, 500 -> 8KB, 1000 -> 16KB, ... 256000 -> 4MB
-let mem_sizes: [11]i32 = [250, 500, 1000, 2000, 4000, 8000,
-	16000, 32000, 64000, 128000, 256000];
-def MEM_NSIZES: i32 = 11;
+let mem_sizes: [13]i32 = [250, 500, 1000, 2000, 4000, 8000,
+	16000, 32000, 64000, 128000, 256000, 1024000, 2048000];
+def MEM_NSIZES: i32 = 13;
 
-// Results: 11 sizes * 9 tests
-let mem_res: [99]f64 = [0...];
+// Results: 13 sizes * 9 tests
+let mem_res: [117]f64 = [0...];
 
 fn mem_recal(elapsed: f64, n: i32) i32 = {
 	if (elapsed < MEM_MIN_SECS / 8.0f64) {

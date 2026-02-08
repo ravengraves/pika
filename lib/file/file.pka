@@ -1,0 +1,131 @@
+export type FileError = !void;
+export type FileOk = !void;
+export type DirDone = !void;
+
+export type OpenResult = (i32 | FileError);
+export type ReadResult = (i64 | FileError);
+export type WriteResult = (i64 | FileError);
+export type SeekResult = (i64 | FileError);
+export type VoidResult = (FileOk | FileError);
+export type DirOpenResult = (i64 | FileError);
+export type DirEntry = (str | FileError | DirDone);
+export type ReadLinkResult = (str | FileError);
+
+export @symbol("pk_file_open")      fn Open(path: str, mode: str) OpenResult;
+export @symbol("pk_file_close")     fn Close(fd: i32) void;
+export @symbol("pk_file_read")      fn Read(fd: i32, buf: []u8) ReadResult;
+export @symbol("pk_file_write")     fn Write(fd: i32, data: []u8) WriteResult;
+export @symbol("pk_file_seek")      fn Seek(fd: i32, pos: i64) SeekResult;
+export @symbol("pk_file_loc")       fn Loc(fd: i32) i64;
+
+export @symbol("pk_file_del")       fn Del(path: str) VoidResult;
+export @symbol("pk_file_rename")    fn Rename(old: str, new: str) VoidResult;
+export @symbol("pk_file_mkdir")     fn Mkdir(path: str) VoidResult;
+export @symbol("pk_file_rmdir")     fn Rmdir(path: str) VoidResult;
+
+export @symbol("pk_file_size")      fn Size(path: str) i64;
+export @symbol("pk_file_exists")    fn Exists(path: str) bool;
+export @symbol("pk_file_is_dir")    fn IsDir(path: str) bool;
+export @symbol("pk_file_is_file")   fn IsFile(path: str) bool;
+export @symbol("pk_file_is_link")   fn IsLink(path: str) bool;
+export @symbol("pk_file_mtime")     fn Mtime(path: str) i64;
+export @symbol("pk_file_atime")     fn Atime(path: str) i64;
+
+export @symbol("pk_file_readlink")  fn ReadLink(path: str, buf: []u8) ReadLinkResult;
+export @symbol("pk_file_makelink")  fn MakeLink(target: str, path: str) VoidResult;
+
+export @symbol("pk_file_opendir")   fn OpenDir(path: str) DirOpenResult;
+export @symbol("pk_file_dirnext")   fn DirNext(handle: i64, buf: []u8) DirEntry;
+export @symbol("pk_file_closedir")  fn CloseDir(handle: i64) void;
+
+// Must* helpers — unwrap result or abort with message
+
+export fn MustOpen(path: str, mode: str) i32 = {
+    let r = Open(path, mode);
+    let fd: i32 = -1;
+    match (r) {
+    case let v: i32 => fd = v;
+    case FileError => abort("file::Open failed");
+    };
+    return fd;
+};
+
+export fn MustRead(fd: i32, buf: []u8) i64 = {
+    let r = Read(fd, buf);
+    let n: i64 = -1;
+    match (r) {
+    case let v: i64 => n = v;
+    case FileError => abort("file::Read failed");
+    };
+    return n;
+};
+
+export fn MustWrite(fd: i32, data: []u8) i64 = {
+    let r = Write(fd, data);
+    let n: i64 = -1;
+    match (r) {
+    case let v: i64 => n = v;
+    case FileError => abort("file::Write failed");
+    };
+    return n;
+};
+
+export fn MustSeek(fd: i32, pos: i64) i64 = {
+    let r = Seek(fd, pos);
+    let n: i64 = -1;
+    match (r) {
+    case let v: i64 => n = v;
+    case FileError => abort("file::Seek failed");
+    };
+    return n;
+};
+
+export fn MustDel(path: str) void = {
+    let r = Del(path);
+    match (r) {
+    case FileOk => void;
+    case FileError => abort("file::Del failed");
+    };
+};
+
+export fn MustRename(old: str, new: str) void = {
+    let r = Rename(old, new);
+    match (r) {
+    case FileOk => void;
+    case FileError => abort("file::Rename failed");
+    };
+};
+
+export fn MustMkdir(path: str) void = {
+    let r = Mkdir(path);
+    match (r) {
+    case FileOk => void;
+    case FileError => abort("file::Mkdir failed");
+    };
+};
+
+export fn MustRmdir(path: str) void = {
+    let r = Rmdir(path);
+    match (r) {
+    case FileOk => void;
+    case FileError => abort("file::Rmdir failed");
+    };
+};
+
+export fn MustOpenDir(path: str) i64 = {
+    let r = OpenDir(path);
+    let h: i64 = -1;
+    match (r) {
+    case let v: i64 => h = v;
+    case FileError => abort("file::OpenDir failed");
+    };
+    return h;
+};
+
+export fn IsDirDone(entry: DirEntry) bool = {
+    match (entry) {
+    case DirDone => return true;
+    case FileError => return true;
+    case str => return false;
+    };
+};

@@ -1,0 +1,30 @@
+export type Error = !void;
+export type Alive = !void;
+export type Ok = !void;
+
+export type CreateResult = (i32 | Error);
+export type Status = (i32 | Alive);
+export type VoidResult = (Ok | Error);
+
+export @symbol("pk_proc_create")    fn Create(path: str, argv: []str) CreateResult;
+export @symbol("pk_proc_check")     fn Check(pid: i32) Status;
+export @symbol("pk_proc_wait")      fn Wait(pid: i32, timeout: i32) i32;
+export @symbol("pk_proc_kill")      fn Kill(pid: i32, hard: bool) VoidResult;
+export @symbol("pk_proc_exit")      fn Exit(code: i32) void;
+export @symbol("pk_proc_getpid")    fn GetPid() i32;
+export @symbol("pk_proc_sleep")     fn MilliSleep(ms: i32) void;
+export @symbol("pk_proc_isroot")    fn IsRoot() bool;
+export @symbol("pk_proc_minprio")   fn MinPriority() i32;
+export @symbol("pk_proc_maxprio")   fn MaxPriority() i32;
+export @symbol("pk_proc_setprio")   fn SetPriority(pid: i32, level: i32) VoidResult;
+export @symbol("pk_proc_getprio")   fn GetPriority(pid: i32) i32;
+
+export fn MustCreate(path: str, argv: []str) i32 = {
+    let r = Create(path, argv);
+    let pid: i32 = -1;
+    match (r) {
+    case let v: i32 => pid = v;
+    case Error => abort("proc::Create failed");
+    };
+    return pid;
+};

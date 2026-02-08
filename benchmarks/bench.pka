@@ -1,57 +1,35 @@
 // bench.pka - Shared utilities for Pika benchmarks
-// Provides text output and timing helpers.
+// Provides text output and timing helpers using the standard library.
 
 use rt;
 use strings;
 use clock;
+use fmt;
 
 // Write a string to stdout
 fn bench_write(s: str) void = {
-    rt::write(1, strings::toutf8(s): *[*]u8, len(s));
+    fmt::Prints(s);
 };
 
 // Write a newline to stdout
 fn bench_nl() void = {
-    bench_write("\n");
+    fmt::Prints("\n");
 };
 
 // Write an unsigned 64-bit integer to stdout
 fn bench_write_u64(val: u64) void = {
-    let buf: [20]u8 = [0...];
-    let count: i32 = 0;
-    if (val == 0) {
-        buf[0] = 48: u8;
-        count = 1;
-    } else {
-        let v = val;
-        for (v > 0) {
-            let d: i32 = (v % 10): i32;
-            buf[count: size] = (48 + d): u8;
-            v /= 10;
-            count += 1;
-        };
-        // Reverse digits
-        let left: i32 = 0;
-        let right = count - 1;
-        for (left < right) {
-            let tmp = buf[left: size];
-            buf[left: size] = buf[right: size];
-            buf[right: size] = tmp;
-            left += 1;
-            right -= 1;
-        };
-    };
-    rt::write(1, &buf: *opaque, count: size);
+    let storage: [24]u8 = [0...];
+    let b = fmt::New(storage[0z..24z]);
+    fmt::Wu64(&b, val);
+    fmt::Print(&b);
 };
 
 // Write a signed 64-bit integer to stdout
 fn bench_write_i64(n: i64) void = {
-    if (n < 0) {
-        bench_write("-");
-        bench_write_u64((-n): u64);
-    } else {
-        bench_write_u64(n: u64);
-    };
+    let storage: [24]u8 = [0...];
+    let b = fmt::New(storage[0z..24z]);
+    fmt::Wi64(&b, n);
+    fmt::Print(&b);
 };
 
 // Write a signed 32-bit integer to stdout
@@ -61,47 +39,23 @@ fn bench_write_i32(n: i32) void = {
 
 // Write val as decimal, zero-padded to width digits
 fn bench_write_padded(val: u64, width: i32) void = {
-    let buf: [20]u8 = [0...];
-    for (let i: i32 = 0; i < width && i < 20; i += 1) {
-        buf[i: size] = 48: u8;
-    };
-    let pos: i32 = width - 1;
-    let v = val;
-    for (v > 0 && pos >= 0) {
-        let d: i32 = (v % 10): i32;
-        buf[pos: size] = (48 + d): u8;
-        v /= 10;
-        pos -= 1;
-    };
-    rt::write(1, &buf: *opaque, width: size);
+    let storage: [24]u8 = [0...];
+    let b = fmt::New(storage[0z..24z]);
+    fmt::Wu64(&b, val, "dec", width);
+    fmt::Print(&b);
 };
 
 // Write an f64 with given decimal places
 fn bench_write_f64(v: f64, decimals: i32) void = {
-    let val = v;
-    if (val < 0.0f64) {
-        bench_write("-");
-        val = -val;
-    };
-    let int_part: i64 = val: i64;
-    bench_write_i64(int_part);
-    if (decimals <= 0) { return; };
-    bench_write(".");
-    let frac = val - (int_part: f64);
-    let mult: f64 = 1.0f64;
-    for (let i: i32 = 0; i < decimals; i += 1) {
-        mult *= 10.0f64;
-    };
-    let frac_int: i64 = (frac * mult + 0.5f64): i64;
-    if (frac_int >= (mult: i64)) {
-        frac_int = (mult: i64) - 1;
-    };
-    bench_write_padded(frac_int: u64, decimals);
+    let storage: [64]u8 = [0...];
+    let b = fmt::New(storage[0z..64z]);
+    fmt::Wf64(&b, v, decimals, "dec");
+    fmt::Print(&b);
 };
 
 // Get monotonic time in nanoseconds
 fn bench_time_ns() i64 = {
-    return clock::monotonic_ns();
+    return clock::TimeNS();
 };
 
 // Calculate elapsed seconds between two nanosecond timestamps

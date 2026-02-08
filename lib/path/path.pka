@@ -1,0 +1,128 @@
+use strings;
+
+// path — Path manipulation (pure Pika, no C backing)
+// All str returns are views into existing buffers (zero copy).
+
+export type Path = struct {
+    buf: []u8,
+    len: i32,
+};
+
+export fn New(buf: []u8) Path = {
+    return Path { buf = buf, len = 0 };
+};
+
+export fn FromStr(buf: []u8, s: str) Path = {
+    let sdata = strings::toutf8(s);
+    let slen: i32 = sdata.len: i32;
+    if (slen > buf.len: i32) {
+        slen = buf.len: i32;
+    };
+    let i: i32 = 0;
+    for (i < slen) {
+        buf[i: size] = sdata[i: size];
+        i = i + 1;
+    };
+    return Path { buf = buf, len = slen };
+};
+
+export fn ToStr(p: *Path) str = {
+    return strings::fromutf8_unsafe(p.buf[0z..p.len: size]);
+};
+
+// DirName returns everything before the last '/' (or "" if no slash).
+export fn DirName(s: str) str = {
+    let data = strings::toutf8(s);
+    let i: i32 = (data.len: i32) - 1;
+    for (i >= 0) {
+        if (data[i: size] == '/') {
+            if (i == 0) {
+                return "/";
+            };
+            return strings::fromutf8_unsafe(data[0z..i: size]);
+        };
+        i = i - 1;
+    };
+    return "";
+};
+
+// BaseName returns everything after the last '/'.
+export fn BaseName(s: str) str = {
+    let data = strings::toutf8(s);
+    let i: i32 = (data.len: i32) - 1;
+    for (i >= 0) {
+        if (data[i: size] == '/') {
+            return strings::fromutf8_unsafe(data[(i + 1): size..data.len]);
+        };
+        i = i - 1;
+    };
+    return s;
+};
+
+// Ext returns the file extension including the dot (or "" if none).
+export fn Ext(s: str) str = {
+    let data = strings::toutf8(s);
+    let i: i32 = (data.len: i32) - 1;
+    for (i >= 0) {
+        if (data[i: size] == '.') {
+            return strings::fromutf8_unsafe(data[i: size..data.len]);
+        };
+        if (data[i: size] == '/') {
+            return "";
+        };
+        i = i - 1;
+    };
+    return "";
+};
+
+// Append joins a component with '/' separator. Returns false if buffer overflow.
+export fn Append(p: *Path, s: str) bool = {
+    let sdata = strings::toutf8(s);
+    let slen: i32 = sdata.len: i32;
+    let cap: i32 = p.buf.len: i32;
+
+    // Need separator?
+    let need_sep: i32 = 0;
+    if (p.len > 0 && slen > 0) {
+        if (p.buf[(p.len - 1): size] != '/') {
+            need_sep = 1;
+        };
+    };
+
+    let total: i32 = p.len + need_sep + slen;
+    if (total > cap) {
+        return false;
+    };
+
+    if (need_sep) {
+        p.buf[p.len: size] = '/';
+        p.len = p.len + 1;
+    };
+
+    let i: i32 = 0;
+    for (i < slen) {
+        p.buf[p.len: size] = sdata[i: size];
+        p.len = p.len + 1;
+        i = i + 1;
+    };
+
+    return true;
+};
+
+// Pop removes the last path component.
+export fn Pop(p: *Path) str = {
+    let i: i32 = p.len - 1;
+    for (i > 0) {
+        if (p.buf[i: size] == '/') {
+            p.len = i;
+            return ToStr(p);
+        };
+        i = i - 1;
+    };
+    if (i == 0 && p.len > 0 && p.buf[0z] == '/') {
+        p.len = 1;
+    } else {
+        p.len = 0;
+    };
+    return ToStr(p);
+};

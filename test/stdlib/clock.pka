@@ -1,15 +1,18 @@
 use clock;
 use proc;
-use rt;
 
 export fn main() void = {
-	clock::calibrate(0.02f64);
-	let start = clock::now();
-	proc::sleep_ms(10);
-	let stop = clock::now();
-	let elapsed = clock::dt(stop, start);
+	clock::Calibrate(0.005f64);
+	let start = clock::Now();
+	proc::MilliSleep(10);
+	let stop = clock::Now();
+	let elapsed = clock::Dt(stop, start);
 	assert(stop > start);
 	assert(elapsed > 0.001f64);
-	let elapsed2 = clock::since(start);
+	let elapsed2 = clock::Since(start);
 	assert(elapsed2 >= elapsed);
+
+	// TimeNS should return positive value
+	let ns = clock::TimeNS();
+	assert(ns > 0);
 };

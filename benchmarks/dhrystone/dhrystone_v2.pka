@@ -29,6 +29,7 @@ type dhry_record = struct {
 };
 
 // --- Global state ---
+let dhry_opaque: i32 = 0; // anti-DCE: route locals through global to make them opaque
 let dhry_IntGlob: i32 = 0;
 let dhry_BoolGlob: bool = false;
 let dhry_Char1Glob: u8 = 0;
@@ -238,14 +239,26 @@ export fn main() void = {
 		dhry_Proc8(&dhry_Array1Glob: *[*]i32, &dhry_Array2Glob: *[*]i32, intloc1, intloc3);
 		dhry_Proc1();
 		for (let ch: u8 = 'A'; ch <= dhry_Char2Glob; ch += 1) {
-			if (enumloc == dhry_Func1(ch, 'C')) {
+			// Route ch and enumloc through global+barrier to make them opaque.
+			// Without this, the compiler proves Func1(ch,'C') is constant and
+			// eliminates the entire loop body including the Proc6 call.
+			dhry_opaque = ch: i32;
+			benchmark_compiler_barrier();
+			if (enumloc == dhry_Func1(dhry_opaque: u8, 'C')) {
 				dhry_Proc6(dhry_ident::IDENT1, &enumloc);
 			};
+			dhry_opaque = enumloc: i32;
+			benchmark_compiler_barrier();
+			enumloc = dhry_opaque: dhry_ident;
 		};
 		intloc3 = intloc2 * intloc1;
 		intloc2 = intloc3 / intloc1;
 		intloc2 = 7 * (intloc3 - intloc2) - intloc1;
 		dhry_Proc2(&intloc1);
+		// Sink all local results through global to prevent DCE.
+		// enumloc must be included so the character loop body is preserved.
+		dhry_opaque = (enumloc: i32) + intloc1 + intloc2;
+		benchmark_compiler_barrier();
 	};
 
 	let end_ns = bench_time_ns();

@@ -1,0 +1,15 @@
+// atomic — Lock-free atomic operations for shared-memory synchronization
+// Uses GCC __atomic_* builtins — works on all GCC/Clang targets (x86, ARM, RISC-V).
+
+export type Atomic = u64;
+
+// Memory ordering constants (match GCC __ATOMIC_* values)
+export def RELAXED: i32 = 0;
+export def ACQUIRE: i32 = 2;
+export def RELEASE: i32 = 3;
+export def ACQ_REL: i32 = 4;
+export def SEQ_CST: i32 = 5;
+
+export @symbol("pk_atomic_store") fn Store(a: *Atomic, val: u64, order: i32 = 5) void;
+export @symbol("pk_atomic_load")  fn Load(a: *Atomic, order: i32 = 5) u64;
+export @symbol("pk_atomic_cas")   fn CAS(a: *Atomic, expected: *u64, desired: u64, success: i32 = 5, failure: i32 = 5) bool;

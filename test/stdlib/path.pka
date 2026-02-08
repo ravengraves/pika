@@ -1,0 +1,46 @@
+use path;
+
+export fn main() void = {
+	// DirName
+	assert(path::DirName("/usr/bin/gcc") == "/usr/bin");
+	assert(path::DirName("/usr") == "/");
+	assert(path::DirName("file.txt") == "");
+	assert(path::DirName("/file.txt") == "/");
+
+	// BaseName
+	assert(path::BaseName("/usr/bin/gcc") == "gcc");
+	assert(path::BaseName("file.txt") == "file.txt");
+	assert(path::BaseName("/file.txt") == "file.txt");
+
+	// Ext
+	assert(path::Ext("file.txt") == ".txt");
+	assert(path::Ext("archive.tar.gz") == ".gz");
+	assert(path::Ext("Makefile") == "");
+	assert(path::Ext("/path/to/file") == "");
+	assert(path::Ext("/path/to/file.c") == ".c");
+
+	// New + Append + ToStr
+	let buf: [256]u8 = [0...];
+	let p: path::Path = path::New(buf[0z..256z]);
+	assert(path::Append(&p, "usr") == true);
+	assert(path::ToStr(&p) == "usr");
+	assert(path::Append(&p, "bin") == true);
+	assert(path::ToStr(&p) == "usr/bin");
+	assert(path::Append(&p, "gcc") == true);
+	assert(path::ToStr(&p) == "usr/bin/gcc");
+
+	// Pop
+	path::Pop(&p);
+	assert(path::ToStr(&p) == "usr/bin");
+	path::Pop(&p);
+	assert(path::ToStr(&p) == "usr");
+	path::Pop(&p);
+	assert(path::ToStr(&p) == "");
+
+	// FromStr
+	let buf2: [256]u8 = [0...];
+	let p2: path::Path = path::FromStr(buf2[0z..256z], "/home/user/docs");
+	assert(path::ToStr(&p2) == "/home/user/docs");
+	assert(path::DirName(path::ToStr(&p2)) == "/home/user");
+	assert(path::BaseName(path::ToStr(&p2)) == "docs");
+};

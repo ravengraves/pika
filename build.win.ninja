@@ -1,0 +1,31 @@
+# Pika build — Windows (assumes gcc.exe, ninja)
+
+rule cmd
+  command = cmd /c $in
+  pool = console
+
+# Tests
+build run_tests: cmd scripts/test.bat
+build run_stdlib_tests: cmd scripts/test_stdlib.bat
+build run_math_tests: cmd scripts/test_math.bat
+
+# Benchmarks
+build run_benchmarks: cmd scripts/benchmark.bat
+build run_benchmarks_c: cmd scripts/benchmark_c.bat
+build run_benchmarks_rs: cmd scripts/benchmark_rs.bat
+
+# Aggregate targets
+build check: phony run_tests run_stdlib_tests run_math_tests
+build bench: phony run_benchmarks
+build bench_c: phony run_benchmarks_c
+build bench_rs: phony run_benchmarks_rs
+build bench_all: phony run_benchmarks run_benchmarks_c run_benchmarks_rs
+
+# Clean
+rule clean_cmd
+  command = cmd /c if exist build rmdir /s /q build
+
+build clean: clean_cmd
+
+# Default
+default check

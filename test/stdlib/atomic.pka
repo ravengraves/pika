@@ -1,0 +1,49 @@
+use atomic;
+use fmt;
+
+export fn main() void = {
+	// Init and Load
+	let a: atomic::Atomic = 0u64;
+	assert(atomic::Load(&a) == 0u64);
+
+	// Store and Load
+	atomic::Store(&a, 42u64);
+	assert(atomic::Load(&a) == 42u64);
+
+	// Store with explicit ordering
+	atomic::Store(&a, 100u64, atomic::RELEASE);
+	assert(atomic::Load(&a, atomic::ACQUIRE) == 100u64);
+
+	// CAS success
+	let expected: u64 = 100u64;
+	let ok = atomic::CAS(&a, &expected, 200u64);
+	assert(ok == true);
+	assert(atomic::Load(&a) == 200u64);
+	assert(expected == 100u64);
+
+	// CAS failure (expected doesn't match)
+	expected = 999u64;
+	let ok2 = atomic::CAS(&a, &expected, 300u64);
+	assert(ok2 == false);
+	assert(atomic::Load(&a) == 200u64);
+	assert(expected == 200u64);
+
+	// CAS with explicit ordering
+	expected = 200u64;
+	let ok3 = atomic::CAS(&a, &expected, 500u64, atomic::ACQ_REL, atomic::ACQUIRE);
+	assert(ok3 == true);
+	assert(atomic::Load(&a) == 500u64);
+
+	// CAS loop (typical pattern)
+	atomic::Store(&a, 10u64);
+	let old: u64 = atomic::Load(&a);
+	for (true) {
+		if (atomic::CAS(&a, &old, old + 5u64)) {
+			break;
+		};
+	};
+	assert(atomic::Load(&a) == 15u64);
+
+	fmt::Prints("stdlib/atomic: ");
+	fmt::Printsln("OK");
+};
