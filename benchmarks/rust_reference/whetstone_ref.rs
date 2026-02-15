@@ -1,8 +1,7 @@
 // whetstone_ref.rs - Whetstone Benchmark for Rust
 // Adapted from Roy Longbottom's C/C++ Whetstone Benchmark
-// Single precision version matching Pika whetstone.pka
+// Single precision version matching C output format
 
-use std::arch::asm;
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -39,6 +38,14 @@ fn init_n3_seeds() {
     }
 }
 
+fn print_line(title: &str, result: f64, mflops: f64, mops: f64, time: f64, is_mflops: bool) {
+    if is_mflops {
+        println!("{} {:>24.17}     {:>9.3}          {:>9.3}", title, result, mflops, time);
+    } else {
+        println!("{} {:>24.17}               {:>9.3}{:>9.3}", title, result, mops, time);
+    }
+}
+
 fn main() {
     let x100: i64 = 100000;
     let xtra: i64 = 1;
@@ -59,13 +66,12 @@ fn main() {
 
     let mut e1: [f32; 4] = [0.0; 4];
     let mut total_time: f64 = 0.0;
-    let mut whet_check: f64 = 0.0;
 
-    println!("Rust Whetstone Benchmark (Single Precision)");
-    println!("Passes: {} x {}", xtra, x100);
-    println!();
-    println!("Loop content            MFLOPS/MOPS   Seconds");
-    println!("-------------------     -----------   -------");
+    // Section results (buffered for end-of-benchmark printing)
+    let mut sec_result: [f64; 9] = [0.0; 9];
+    let mut sec_mflops: [f64; 9] = [0.0; 9];
+    let mut sec_mops: [f64; 9] = [0.0; 9];
+    let mut sec_time: [f64; 9] = [0.0; 9];
 
     // --- Section 1: Array elements ---
     e1[0] = 1.0; e1[1] = -1.0; e1[2] = -1.0; e1[3] = -1.0;
@@ -80,11 +86,11 @@ fn main() {
         t = 1.0 - t;
     }
     t = t0;
-    whet_check += e1[0] as f64;
     let sec1 = ts1.elapsed().as_secs_f64() / 10.0;
-    total_time += sec1 * 10.0;
-    let mf1 = (n1 * 16) as f64 * xtra as f64 / (1000000.0 * sec1);
-    println!("N1 floating point       {:.1}         {:.3}", mf1, sec1);
+    total_time += sec1;
+    sec_result[1] = e1[3] as f64;
+    sec_mflops[1] = (n1 * 16) as f64 * xtra as f64 / (1000000.0 * sec1);
+    sec_time[1] = sec1;
 
     // --- Section 2: Array as parameter ---
     let ts2 = Instant::now();
@@ -95,11 +101,11 @@ fn main() {
         t = 1.0 - t;
     }
     t = t0;
-    whet_check += e1[0] as f64;
     let sec2 = ts2.elapsed().as_secs_f64();
     total_time += sec2;
-    let mf2 = (n2 * 96) as f64 * xtra as f64 / (1000000.0 * sec2);
-    println!("N2 floating point       {:.1}         {:.3}", mf2, sec2);
+    sec_result[2] = e1[3] as f64;
+    sec_mflops[2] = (n2 * 96) as f64 * xtra as f64 / (1000000.0 * sec2);
+    sec_time[2] = sec2;
 
     // --- Section 3: Conditional jumps ---
     init_n3_seeds();
@@ -112,16 +118,16 @@ fn main() {
             if j < 1 { j = 1; } else { j = 0; }
             unsafe {
                 N3_SEEDS[(i & 255) as usize] = j;
-                asm!("", options(nostack, preserves_flags));
+                std::arch::asm!("", options(nostack, preserves_flags));
                 j = N3_SEEDS[((i + 1) & 255) as usize];
             }
         }
     }
-    whet_check += j as f64;
     let sec3 = ts3.elapsed().as_secs_f64();
     total_time += sec3;
-    let mo3 = (n3 * 3) as f64 * xtra as f64 / (1000000.0 * sec3);
-    println!("N3 if then else         {:.1}         {:.3}", mo3, sec3);
+    sec_result[3] = j as f64;
+    sec_mops[3] = (n3 * 3) as f64 * xtra as f64 / (1000000.0 * sec3);
+    sec_time[3] = sec3;
 
     // --- Section 4: Integer arithmetic ---
     j = 1;
@@ -135,14 +141,15 @@ fn main() {
             l = (l - k) * (k + j);
             e1[(l - 2) as usize] = (j + k + l) as f32;
             e1[(k - 2) as usize] = (j * k * l) as f32;
-            unsafe { asm!("/* {0} {1} {2} */", inlateout(reg) j, inlateout(reg) k, inlateout(reg) l, options(nostack, preserves_flags)); }
+            unsafe { std::arch::asm!("/* {0} {1} {2} */", inlateout(reg) j, inlateout(reg) k, inlateout(reg) l, options(nostack, preserves_flags)); }
         }
     }
-    whet_check += e1[0] as f64 + j as f64;
     let sec4 = ts4.elapsed().as_secs_f64();
     total_time += sec4;
-    let mo4 = (n4 * 15) as f64 * xtra as f64 / (1000000.0 * sec4);
-    println!("N4 fixed point          {:.1}         {:.3}", mo4, sec4);
+    let x4: f64 = e1[0] as f64 + e1[1] as f64;
+    sec_result[4] = x4;
+    sec_mops[4] = (n4 * 15) as f64 * xtra as f64 / (1000000.0 * sec4);
+    sec_time[4] = sec4;
 
     // --- Section 5: Trig functions ---
     let mut x: f32 = 0.5;
@@ -156,11 +163,11 @@ fn main() {
         t = 1.0 - t;
     }
     t = t0;
-    whet_check += x as f64 + y as f64;
     let sec5 = ts5.elapsed().as_secs_f64();
     total_time += sec5;
-    let mo5 = (n5 * 26) as f64 * xtra as f64 / (1000000.0 * sec5);
-    println!("N5 sin,cos etc.         {:.1}         {:.3}", mo5, sec5);
+    sec_result[5] = y as f64;
+    sec_mops[5] = (n5 * 26) as f64 * xtra as f64 / (1000000.0 * sec5);
+    sec_time[5] = sec5;
 
     // --- Section 6: Procedure calls ---
     x = 1.0;
@@ -172,11 +179,11 @@ fn main() {
             whet_p3(&mut x, &mut y, &mut z, t, t1, t2);
         }
     }
-    whet_check += x as f64 + y as f64 + z as f64;
     let sec6 = ts6.elapsed().as_secs_f64();
     total_time += sec6;
-    let mf6 = (n6 * 6) as f64 * xtra as f64 / (1000000.0 * sec6);
-    println!("N6 floating point       {:.1}         {:.3}", mf6, sec6);
+    sec_result[6] = z as f64;
+    sec_mflops[6] = (n6 * 6) as f64 * xtra as f64 / (1000000.0 * sec6);
+    sec_time[6] = sec6;
 
     // --- Section 7: Array references ---
     j = 0; k = 1; l = 2;
@@ -185,14 +192,14 @@ fn main() {
     for _ in 0..xtra {
         for _ in 0..n7 {
             whet_po(&mut e1, j as usize, k as usize, l as usize);
-            unsafe { asm!("", options(nostack, preserves_flags)); }
+            unsafe { std::arch::asm!("", options(nostack, preserves_flags)); }
         }
     }
-    whet_check += e1[0] as f64 + e1[1] as f64 + e1[2] as f64;
     let sec7 = ts7.elapsed().as_secs_f64();
     total_time += sec7;
-    let mo7 = (n7 * 3) as f64 * xtra as f64 / (1000000.0 * sec7);
-    println!("N7 assignments          {:.1}         {:.3}", mo7, sec7);
+    sec_result[7] = e1[2] as f64;
+    sec_mops[7] = (n7 * 3) as f64 * xtra as f64 / (1000000.0 * sec7);
+    sec_time[7] = sec7;
 
     // --- Section 8: Standard functions ---
     x = 0.75;
@@ -202,17 +209,42 @@ fn main() {
             x = (x.ln() / t1).exp().sqrt();
         }
     }
-    whet_check += x as f64;
     let sec8 = ts8.elapsed().as_secs_f64();
     total_time += sec8;
-    let mo8 = (n8 * 4) as f64 * xtra as f64 / (1000000.0 * sec8);
-    println!("N8 exp,sqrt etc.        {:.1}         {:.3}", mo8, sec8);
+    sec_result[8] = x as f64;
+    sec_mops[8] = (n8 * 4) as f64 * xtra as f64 / (1000000.0 * sec8);
+    sec_time[8] = sec8;
 
-    // --- Summary ---
+    // --- Accumulate check ---
+    let mut whet_check: f64 = 0.0;
+    for s in 1..=8 {
+        whet_check += sec_result[s];
+    }
+
+    // --- Print results (C format) ---
+    println!();
+    println!(" Single Precision Rust Whetstone Benchmark");
+    println!("         rustc Linux");
+    println!("         -C opt-level=3");
+    println!();
+    println!("Loop content                  Result              MFLOPS      MOPS   Seconds");
+    println!();
+
+    print_line("N1 floating point", sec_result[1], sec_mflops[1], sec_mops[1], sec_time[1], true);
+    print_line("N2 floating point", sec_result[2], sec_mflops[2], sec_mops[2], sec_time[2], true);
+    print_line("N3 if then else  ", sec_result[3], sec_mflops[3], sec_mops[3], sec_time[3], false);
+    print_line("N4 fixed point   ", sec_result[4], sec_mflops[4], sec_mops[4], sec_time[4], false);
+    print_line("N5 sin,cos etc.  ", sec_result[5], sec_mflops[5], sec_mops[5], sec_time[5], false);
+    print_line("N6 floating point", sec_result[6], sec_mflops[6], sec_mops[6], sec_time[6], true);
+    print_line("N7 assignments   ", sec_result[7], sec_mflops[7], sec_mops[7], sec_time[7], false);
+    print_line("N8 exp,sqrt etc. ", sec_result[8], sec_mflops[8], sec_mops[8], sec_time[8], false);
+
     println!();
     let mwips = xtra as f64 * x100 as f64 / (10.0 * total_time);
-    println!("MWIPS                   {:.3}         {:.3}", mwips, total_time);
+    println!("MWIPS            {:>39.3}{:>19.3}", mwips, total_time);
+    println!();
 
-    // Print checksum to prevent DCE
-    println!("Check: {:.6}", black_box(whet_check));
+    if whet_check == 0.0 {
+        println!("Wrong answer");
+    }
 }

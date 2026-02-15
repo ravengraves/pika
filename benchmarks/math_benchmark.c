@@ -73,10 +73,10 @@ static void bench_libm_sincos(float* s, float* c, const float* i, int n) {
 }
 static void bench_pika_sincos(float* s, float* c, const float* i, int n) {
 	for (int j = 0; j + 4 <= n; j += 4) {
-		MATH_SINCOS_RESULT r0 = math_sincos(i[j+0]);
-		MATH_SINCOS_RESULT r1 = math_sincos(i[j+1]);
-		MATH_SINCOS_RESULT r2 = math_sincos(i[j+2]);
-		MATH_SINCOS_RESULT r3 = math_sincos(i[j+3]);
+		math_SinCosResult r0 = math_sincos(i[j+0]);
+		math_SinCosResult r1 = math_sincos(i[j+1]);
+		math_SinCosResult r2 = math_sincos(i[j+2]);
+		math_SinCosResult r3 = math_sincos(i[j+3]);
 		s[j+0] = r0.s; c[j+0] = r0.c;
 		s[j+1] = r1.s; c[j+1] = r1.c;
 		s[j+2] = r2.s; c[j+2] = r2.c;

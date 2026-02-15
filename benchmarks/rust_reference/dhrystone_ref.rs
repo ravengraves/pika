@@ -1,6 +1,6 @@
 // dhrystone_ref.rs - Dhrystone Benchmark 1.1 for Rust
 // Adapted from Reinhold P. Weicker's Dhrystone 1.1
-// Matches Pika dhrystone.pka benchmark
+// Output format matches C reference
 
 use std::hint::black_box;
 use std::time::Instant;
@@ -186,10 +186,7 @@ fn main() {
         str_set(&mut STR_GLB, b"DHRYSTONE PROGRAM, SOME STRING");
         str_set(&mut STR1_LOC, b"DHRYSTONE PROGRAM, 1'ST STRING");
 
-        println!("Dhrystone Benchmark (Rust)\n");
-
         let loops: u64 = 100_000_000;
-        println!("Running {} iterations...", loops);
 
         ARRAY2_GLOB[8 * 51 + 7] = 10;
 
@@ -230,6 +227,31 @@ fn main() {
 
         let elapsed = start.elapsed().as_secs_f64();
 
+        println!();
+        println!("Dhrystone Benchmark, Version 1.1 (Language: Rust)");
+        println!();
+
+        println!("{:>12.0} runs {:6.2} seconds ", loops as f64, elapsed);
+        println!();
+
+        print!("Array2Glob8/7: ");
+        if ARRAY2_GLOB[8 * 51 + 7] == (loops as i32) + 10 {
+            print!("O.K.  ");
+        } else {
+            print!("WRONG ");
+        }
+        println!("{:>12.0}", ARRAY2_GLOB[8 * 51 + 7] as f64);
+
+        let usec = elapsed * 1_000_000.0 / loops as f64;
+        let dps = loops as f64 / elapsed;
+        let vax_mips = dps / 1757.0;
+
+        println!();
+        println!("Microseconds for one run through Dhrystone: {:>12.2} ", usec);
+        println!("Dhrystones per Second:                      {:>10.0} ", dps);
+        println!("VAX  MIPS rating =                          {:>12.2} ", vax_mips);
+        println!();
+
         // Anti-DCE: print all global state
         println!("Global values (anti-DCE check):");
         println!("  IntGlob:      {}", INT_GLOB);
@@ -237,32 +259,16 @@ fn main() {
         println!("  Char1Glob:    {}", CHAR1_GLOB as i32);
         println!("  Char2Glob:    {}", CHAR2_GLOB as i32);
         println!("  Array1Glob[8]:{}", ARRAY1_GLOB[8]);
-        print!("  Array2Glob[8][7]: ");
-        if ARRAY2_GLOB[8 * 51 + 7] == (loops as i32) + 10 {
-            println!("O.K.");
-        } else {
-            println!("WRONG {}", ARRAY2_GLOB[8 * 51 + 7]);
-        }
         println!("  RecGlb.int_comp:  {}", REC_GLB.int_comp);
         println!("  RecGlb.enum_comp: {}", REC_GLB.enum_comp);
         println!("  RecNext.discr:    {}", REC_NEXT.discr);
         println!("  RecNext.enum_comp:{}", REC_NEXT.enum_comp);
         println!("  RecNext.int_comp: {}", REC_NEXT.int_comp);
         println!("  RecNext.ptr_comp: {}", REC_NEXT.ptr_comp);
-        // Print string checksums
         let mut str_chk: i32 = 0;
         for i in 0..31 {
             str_chk += STR_GLB[i] as i32 + STR_NEXT[i] as i32;
         }
         println!("  StrChecksum:      {}", str_chk);
-        println!();
-
-        let usec = elapsed * 1_000_000.0 / loops as f64;
-        let dps = loops as f64 / elapsed;
-        let vax_mips = dps / 1757.0;
-
-        println!("Microseconds per run:   {:.2}", usec);
-        println!("Dhrystones per second:  {:.0}", dps);
-        println!("VAX MIPS rating:        {:.2}", vax_mips);
     }
 }

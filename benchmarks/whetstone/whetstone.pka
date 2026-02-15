@@ -5,9 +5,15 @@
 use rt;
 use strings;
 
-// Anti-DCE: global accumulator forces computation to be retained
+// Section results (stored during benchmark, printed at end)
+let whet_sec_result: [9]f64 = [0...];
+let whet_sec_mflops: [9]f64 = [0...];
+let whet_sec_mops: [9]f64 = [0...];
+let whet_sec_time: [9]f64 = [0...];
 let whet_check: f64 = 0.0f64;
-let whet_opaque: i64 = 0; // anti-DCE: route locals through global to make them opaque
+
+// Anti-DCE
+let whet_opaque: i64 = 0;
 let whet_n3_seeds: [256]i64 = [0...];
 
 fn whet_init_n3_seeds() void = {
@@ -42,6 +48,25 @@ fn whet_p3(px: *f32, py: *f32, pz: *f32, t: f32, t1: f32, t2: f32) void = {
     *pz = (*px + *py) / t2;
 };
 
+// Print a section line in C's format
+fn whet_print_line(title: str, section: i32, is_mflops: bool) void = {
+    bench_write(title);
+    bench_write(" ");
+    bench_write_f64_right(whet_sec_result[section: size], 17, 24);
+    bench_write("    ");
+    if (is_mflops) {
+        bench_write(" ");
+        bench_write_f64_right(whet_sec_mflops[section: size], 3, 9);
+        bench_write_spaces(10);
+        bench_write_f64_right(whet_sec_time[section: size], 3, 9);
+    } else {
+        bench_write_spaces(11);
+        bench_write_f64_right(whet_sec_mops[section: size], 3, 9);
+        bench_write_f64_right(whet_sec_time[section: size], 3, 9);
+    };
+    bench_nl();
+};
+
 export fn main() void = {
     let x100: i64 = 100000;
     let xtra: i64 = 1;
@@ -63,16 +88,6 @@ export fn main() void = {
     let e1: [4]f32 = [0...];
     let total_time: f64 = 0.0f64;
 
-    bench_write("Pika Whetstone Benchmark (Single Precision)\n");
-    bench_write("Passes: ");
-    bench_write_i64(xtra);
-    bench_write(" x ");
-    bench_write_i64(x100);
-    bench_nl();
-    bench_nl();
-    bench_write("Loop content            MFLOPS/MOPS   Seconds\n");
-    bench_write("-------------------     -----------   -------\n");
-
     // --- Section 1: Array elements ---
     e1[0] = 1.0; e1[1] = -1.0; e1[2] = -1.0; e1[3] = -1.0;
     let ts1 = bench_time_ns();
@@ -86,16 +101,12 @@ export fn main() void = {
         t = 1.0f32 - t;
     };
     t = t0;
-    whet_check += (e1[0]: f64);
     let te1 = bench_time_ns();
     let sec1 = bench_elapsed_s(ts1, te1) / 10.0f64;
-    total_time += sec1 * 10.0f64;
-    let mf1 = ((n1 * 16): f64) * (xtra: f64) / (1000000.0f64 * sec1);
-    bench_write("N1 floating point       ");
-    bench_write_f64(mf1, 1);
-    bench_write("         ");
-    bench_write_f64(sec1, 3);
-    bench_nl();
+    total_time += sec1;
+    whet_sec_result[1] = (e1[3]: f64);
+    whet_sec_mflops[1] = ((n1 * 16): f64) * (xtra: f64) / (1000000.0f64 * sec1);
+    whet_sec_time[1] = sec1;
 
     // --- Section 2: Array as parameter ---
     let ts2 = bench_time_ns();
@@ -106,16 +117,12 @@ export fn main() void = {
         t = 1.0f32 - t;
     };
     t = t0;
-    whet_check += (e1[0]: f64);
     let te2 = bench_time_ns();
     let sec2 = bench_elapsed_s(ts2, te2);
     total_time += sec2;
-    let mf2 = ((n2 * 96): f64) * (xtra: f64) / (1000000.0f64 * sec2);
-    bench_write("N2 floating point       ");
-    bench_write_f64(mf2, 1);
-    bench_write("         ");
-    bench_write_f64(sec2, 3);
-    bench_nl();
+    whet_sec_result[2] = (e1[3]: f64);
+    whet_sec_mflops[2] = ((n2 * 96): f64) * (xtra: f64) / (1000000.0f64 * sec2);
+    whet_sec_time[2] = sec2;
 
     // --- Section 3: Conditional jumps ---
     whet_init_n3_seeds();
@@ -131,16 +138,12 @@ export fn main() void = {
             j = whet_n3_seeds[((i + 1) & 255): size];
         };
     };
-    whet_check += (j: f64);
     let te3 = bench_time_ns();
     let sec3 = bench_elapsed_s(ts3, te3);
     total_time += sec3;
-    let mo3 = ((n3 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec3);
-    bench_write("N3 if then else         ");
-    bench_write_f64(mo3, 1);
-    bench_write("         ");
-    bench_write_f64(sec3, 3);
-    bench_nl();
+    whet_sec_result[3] = (j: f64);
+    whet_sec_mops[3] = ((n3 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec3);
+    whet_sec_time[3] = sec3;
 
     // --- Section 4: Integer arithmetic ---
     j = 1;
@@ -159,16 +162,13 @@ export fn main() void = {
             j = whet_opaque;
         };
     };
-    whet_check += (e1[0]: f64) + (j: f64);
     let te4 = bench_time_ns();
     let sec4 = bench_elapsed_s(ts4, te4);
     total_time += sec4;
-    let mo4 = ((n4 * 15): f64) * (xtra: f64) / (1000000.0f64 * sec4);
-    bench_write("N4 fixed point          ");
-    bench_write_f64(mo4, 1);
-    bench_write("         ");
-    bench_write_f64(sec4, 3);
-    bench_nl();
+    let x4: f64 = (e1[0]: f64) + (e1[1]: f64);
+    whet_sec_result[4] = x4;
+    whet_sec_mops[4] = ((n4 * 15): f64) * (xtra: f64) / (1000000.0f64 * sec4);
+    whet_sec_time[4] = sec4;
 
     // --- Section 5: Trig functions ---
     let x: f32 = 0.5;
@@ -184,16 +184,12 @@ export fn main() void = {
         t = 1.0f32 - t;
     };
     t = t0;
-    whet_check += (x: f64) + (y: f64);
     let te5 = bench_time_ns();
     let sec5 = bench_elapsed_s(ts5, te5);
     total_time += sec5;
-    let mo5 = ((n5 * 26): f64) * (xtra: f64) / (1000000.0f64 * sec5);
-    bench_write("N5 sin,cos etc.         ");
-    bench_write_f64(mo5, 1);
-    bench_write("         ");
-    bench_write_f64(sec5, 3);
-    bench_nl();
+    whet_sec_result[5] = (y: f64);
+    whet_sec_mops[5] = ((n5 * 26): f64) * (xtra: f64) / (1000000.0f64 * sec5);
+    whet_sec_time[5] = sec5;
 
     // --- Section 6: Procedure calls ---
     x = 1.0;
@@ -205,16 +201,12 @@ export fn main() void = {
             whet_p3(&x, &y, &z, t, t1, t2);
         };
     };
-    whet_check += (x: f64) + (y: f64) + (z: f64);
     let te6 = bench_time_ns();
     let sec6 = bench_elapsed_s(ts6, te6);
     total_time += sec6;
-    let mf6 = ((n6 * 6): f64) * (xtra: f64) / (1000000.0f64 * sec6);
-    bench_write("N6 floating point       ");
-    bench_write_f64(mf6, 1);
-    bench_write("         ");
-    bench_write_f64(sec6, 3);
-    bench_nl();
+    whet_sec_result[6] = (z: f64);
+    whet_sec_mflops[6] = ((n6 * 6): f64) * (xtra: f64) / (1000000.0f64 * sec6);
+    whet_sec_time[6] = sec6;
 
     // --- Section 7: Array references ---
     j = 0; k = 1; l = 2;
@@ -226,16 +218,12 @@ export fn main() void = {
             benchmark_compiler_barrier();
         };
     };
-    whet_check += (e1[0]: f64) + (e1[1]: f64) + (e1[2]: f64);
     let te7 = bench_time_ns();
     let sec7 = bench_elapsed_s(ts7, te7);
     total_time += sec7;
-    let mo7 = ((n7 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec7);
-    bench_write("N7 assignments          ");
-    bench_write_f64(mo7, 1);
-    bench_write("         ");
-    bench_write_f64(sec7, 3);
-    bench_nl();
+    whet_sec_result[7] = (e1[2]: f64);
+    whet_sec_mops[7] = ((n7 * 3): f64) * (xtra: f64) / (1000000.0f64 * sec7);
+    whet_sec_time[7] = sec7;
 
     // --- Section 8: Standard functions ---
     x = 0.75;
@@ -245,28 +233,42 @@ export fn main() void = {
             x = math_sqrt(math_exp(math_log(x) / t1));
         };
     };
-    whet_check += (x: f64);
     let te8 = bench_time_ns();
     let sec8 = bench_elapsed_s(ts8, te8);
     total_time += sec8;
-    let mo8 = ((n8 * 4): f64) * (xtra: f64) / (1000000.0f64 * sec8);
-    bench_write("N8 exp,sqrt etc.        ");
-    bench_write_f64(mo8, 1);
-    bench_write("         ");
-    bench_write_f64(sec8, 3);
-    bench_nl();
+    whet_sec_result[8] = (x: f64);
+    whet_sec_mops[8] = ((n8 * 4): f64) * (xtra: f64) / (1000000.0f64 * sec8);
+    whet_sec_time[8] = sec8;
 
-    // --- Summary ---
+    // --- Accumulate check ---
+    for (let s: i32 = 1; s <= 8; s += 1) {
+        whet_check += whet_sec_result[s: size];
+    };
+
+    // --- Print results (C format) ---
+    bench_write("\n Single Precision Pika Whetstone Benchmark\n");
+    bench_write("         GCC Linux\n");
+    bench_write("         -O3 -ffast-math\n");
+    bench_write("\nLoop content                  Result              MFLOPS      MOPS   Seconds\n\n");
+
+    whet_print_line("N1 floating point", 1, true);
+    whet_print_line("N2 floating point", 2, true);
+    whet_print_line("N3 if then else  ", 3, false);
+    whet_print_line("N4 fixed point   ", 4, false);
+    whet_print_line("N5 sin,cos etc.  ", 5, false);
+    whet_print_line("N6 floating point", 6, true);
+    whet_print_line("N7 assignments   ", 7, false);
+    whet_print_line("N8 exp,sqrt etc. ", 8, false);
+
     bench_nl();
     let mwips = (xtra: f64) * (x100: f64) / (10.0f64 * total_time);
-    bench_write("MWIPS                   ");
-    bench_write_f64(mwips, 3);
-    bench_write("         ");
-    bench_write_f64(total_time, 3);
+    bench_write("MWIPS            ");
+    bench_write_f64_right(mwips, 3, 39);
+    bench_write_f64_right(total_time, 3, 19);
+    bench_nl();
     bench_nl();
 
-    // Print checksum to prevent DCE
-    bench_write("Check: ");
-    bench_write_f64(whet_check, 6);
-    bench_nl();
+    if (whet_check == 0.0f64) {
+        bench_write("Wrong answer\n");
+    };
 };

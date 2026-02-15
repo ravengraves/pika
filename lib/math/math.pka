@@ -299,14 +299,14 @@ export fn tan(x: f32) f32 = {
 };
 
 
-export type SincosResult = struct {
+export type SinCosResult = struct {
 	s: f32,
 	c: f32
 };
 
 // sincos(x) - computes both sin and cos using the optimized
 // polynomials.
-export fn sincos(x: f32) SincosResult = {
+export fn sincos(x: f32) SinCosResult = {
 	let rnd = 0.0f32;
 	if (x < 0.0f32) {
 		rnd = -0.5f32;
@@ -352,7 +352,7 @@ export fn sincos(x: f32) SincosResult = {
 		sin_r_signed = sin_r_fin;
 	};
 
-	return SincosResult {
+	return SinCosResult {
 		c = cos_r_signed,
 		s = sin_r_signed
 	};

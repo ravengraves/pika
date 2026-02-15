@@ -13,33 +13,17 @@ runtime.
 
 Pika is intentionally small: fewer features, fewer sharp edges, and fewer ways
 to surprise yourself six months later. If you've read Hare's "100-year language"
-essay, you've already know the goals: conservative design and long-term
+essay, you already know the goals: conservative design and long-term
 maintainability first. (And admittedly a simpler transpiler than full Hare)
 
 This guide is written for the `pika2c` implementation in this repository.
 
 ## Setup and Compilation
 
-**Overview**  
-Pika source code (`.pka`) is transpiled to GNU C11 by `pika2c`. You then compile
-the generated C with `gcc` or `clang` (or any C11 compiler supporting GNU extensions), 
-and link it with `lib/pika/rt.c` (the runtime used by the tests). Pika programs are 
-written with an `export fn main()` entry point; `pika2c` emits it as a C symbol 
-named `_main`, which the runtime calls.
+The `pikacc` script handles the full compilation pipeline: it transpiles your
+`.pka` source to C, links in the standard library and runtime, and produces a
+native binary.
 
-**Description**  
-The workflow is "Pika in, safe GNU C11 out." The `pika2c` binary reads
-from stdin and writes C to stdout, so you can compile single files or
-concatenated multi-file programs with the same pipeline. The strict warning
-flags below match the project's test harness and are strongly recommended: they
-help catch mistakes that are outside the scope of Pika's minimal checker.
-
-For more examples, browse `test/pika/*.pka`. To run the full suite, use
-`make check` or `bash test/test_pika2c.sh`. For reference material, see
-`docs/pika.md`, `docs/pikav1.md`, `docs/hare_info.md`, and
-`docs/hare_language_examples.md`.
-
-**Example**
 ```pika
 // hello.pka
 use rt;
@@ -52,41 +36,24 @@ export fn main() void = {
 ```
 
 ```bash
-# Build the transpiler (once)
-make pika2c
-
-# Transpile Pika -> C11
-./build/pika2c < hello.pka > hello.c
-
-# Compile + link (gcc)
-CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wfloat-conversion \
-  -Wno-gnu-auto-type -Wno-unused-function -Wno-unused-variable \
-  -Wno-gnu-statement-expression -Wno-parentheses-equality"
-gcc $CFLAGS hello.c lib/pika/rt.c -o hello
-
-# Or clang
-clang $CFLAGS hello.c lib/pika/rt.c -o hello
-
+bin/pikacc hello.pka -o hello
 ./hello
 ```
 
-## The Pika Mindset (Pika is a Hare Subset)
+Under the hood, `pikacc` runs `pika2c` (the transpiler) to generate GNU C11,
+then compiles it with `gcc` or `clang` and links with `runtime/rt.c`. You can
+override the C compiler with `CC=clang bin/pikacc ...`.
 
-**Overview**  
+For more examples, browse `test/*.pka` and `test/stdlib/*.pka`. To run the
+full test suite, use `ninja check`.
+
+## The Pika Mindset
+
 Pika is a stricter subset of Hare. It keeps familiar syntax (functions, structs,
 arrays, enums, tagged unions) but removes features that complicate reasoning
-about correctness and resource usage (recursion, dynamic allocation keywords,
-function pointers, and more).
+about correctness and resource usage: no recursion, no dynamic allocation
+keywords, no function pointers.
 
-**Description**  
-Pika's design goal is not "max power," it's "max confidence." You can still
-write low-level code, but you do so with a tighter set of tools that encourage
-explicitness: fixed-size arrays, slices as views, and pattern matching instead
-of implicit error propagation. When Pika says "no," it's usually because the
-feature would make control flow harder to audit or memory behavior harder to
-predict.
-
-**Example**
 ```pika
 // Iteration is the default; recursion is rejected by pika2c.
 fn factorial(n: i32) i32 = {
@@ -103,10 +70,14 @@ export fn main() void = {
 };
 ```
 
+The design goal is not "max power," it's "max confidence." Every function call
+is a plain call (no vtables, no closures). Every loop is a `for`. Every
+allocation is visible in the source as a local variable or global. When you read
+Pika code, the execution cost of each line is obvious.
+
 ## Bindings: `def`, `const`, `let`, and `static let`
 
-**Overview**  
-Pika has four common "ways to name a value":
+Pika has four ways to name a value:
 
 - `def NAME: T = ...;` - compile-time constant (useful for sizes and flags)
 - `const name: T = ...;` - immutable binding (global or local)
@@ -115,13 +86,6 @@ Pika has four common "ways to name a value":
 
 Pika forbids variable shadowing: you can't reuse a name in an inner scope.
 
-**Description**  
-The no-shadowing rule is one of Pika's biggest readability wins. You never have
-to wonder "which `count` is this?" because there is only one `count` in scope.
-For state, prefer plain locals first, then `static let` for persistent
-function-local state, and only then globals when the state is truly global.
-
-**Example**
 ```pika
 def MAX_TICKS: i32 = 4;
 const START_AT: i32 = 10;
@@ -144,23 +108,18 @@ export fn main() void = {
 };
 ```
 
+The no-shadowing rule means you never have to wonder "which `count` is this?"
+- there is only one `count` in scope. For state, prefer plain locals first,
+then `static let` for persistent function-local state, and globals only when
+the state is truly shared.
+
 ## Types and Literals
 
-**Overview**  
-Pika supports the usual set of systems-language types: fixed-width integers
-(`i32`, `u64`), `bool`, floats (`f32`, `f64`), pointer-sized types (`size`,
-`uintptr`), plus composite types like arrays, slices, structs, unions, enums,
-and tagged unions. Integer literals can be suffixed (`10u8`, `0z`), and you cast
-with `expr: Type`.
+Pika supports fixed-width integers (`i32`, `u64`), `bool`, floats (`f32`,
+`f64`), pointer-sized types (`size`, `uintptr`), plus composite types: arrays,
+slices, structs, enums, and tagged unions. Integer literals can be suffixed
+(`10u8`, `0z`), and you cast with `expr: Type`.
 
-**Description**  
-You'll spend most of your time in the "boring" part of the type system:
-integers, arrays, pointers, and structs. When you need something fancier, Pika
-still gives you it-just explicitly. For example, `size(T)` tells you how many
-bytes a type takes, and casts are always written with `:` so they stand out in
-reviews.
-
-**Example**
 ```pika
 type point = struct {
 	x: i32,
@@ -189,22 +148,16 @@ export fn main() void = {
 };
 ```
 
+`size(T)` tells you how many bytes a type occupies. Casts are always written
+with `:` so they stand out in code review - there are no implicit conversions.
+
 ## Functions
 
-**Overview**  
 Functions are declared with `fn name(params...) ReturnType = { ... };`. Use
 `export fn` to expose a function to the generated C interface. The program's
 entry point is `export fn main() void`, which `pika2c` maps to `_main` for the
 runtime.
 
-**Description**  
-Pika functions look like Hare functions, but with fewer "magical" features:
-no default parameters, no variadics, and no function pointers. The result is
-that call sites are always explicit: if a function needs data, you pass it.
-If you want "pick one of several behaviors," you usually model it with an enum
-and a `switch`.
-
-**Example**
 ```pika
 type op = enum {
 	ADD,
@@ -224,20 +177,16 @@ export fn main() void = {
 };
 ```
 
-## Control Flow (and Why `if` Isn't an Expression)
+No default parameters, no variadics, no function pointers. Call sites are
+always explicit: if a function needs data, you pass it. If you want "pick one
+of several behaviors," model it with an enum and a `switch`.
 
-**Overview**  
+## Control Flow
+
 Pika keeps control flow simple: `if`/`else`, `for` loops, `switch`, and `match`.
-`if` is a statement (not an expression), and `yield` is only used inside `match`
-expressions.
+`if` is a statement, not an expression - assign in each branch when you need a
+value. `yield` is only used inside `match` expressions.
 
-**Description**  
-If you're coming from languages where `if` returns a value, the Pika approach is
-to spell it out: assign in each branch or use `match` when you want a single
-expression value. This keeps control flow easy to read (and easy to map to the underlying hardware instructions) at the cost of a little verbosity-usually a good tradeoff in systems
-code.
-
-**Example**
 ```pika
 fn sum_even_under(limit: i32) i32 = {
 	let total: i32 = 0;
@@ -261,20 +210,16 @@ export fn main() void = {
 };
 ```
 
-## Arrays and Slices (Checked by Default)
+Every branch and loop maps directly to the machine instructions you'd expect.
+No hidden iterator protocols, no lazy evaluation, no implicit unwinding. When
+you read a `for` loop, you know exactly what it does.
 
-**Overview**  
+## Arrays and Slices
+
 Arrays (`[N]T` and `[_]T`) are fixed-size values. Slices (`[]T`) are views into
-arrays (or other slices). Indexing arrays and slices is bounds-checked at
-runtime: out-of-range access aborts.
+arrays - a pointer plus a length. Indexing is bounds-checked at runtime:
+out-of-range access aborts.
 
-**Description**  
-The standard pattern is: keep data in an array, take slices of it to pass into
-functions. Slices don't allocate and don't own memory; they simply point at an
-existing region. You can slice an array (`arr[2..]`), slice a slice
-(`view[1..4]`), and pass slices to helper functions without copying the data.
-
-**Example**
 ```pika
 fn sum(items: []i32) i32 = {
 	let total: i32 = 0;
@@ -296,21 +241,18 @@ export fn main() void = {
 };
 ```
 
+Slices don't allocate and don't own memory - they point at an existing region.
+The standard pattern is: keep data in an array, take slices to pass into
+functions. No copies, no hidden allocations, and the bounds check catches
+off-by-one errors at the point of access.
+
 ## Pointers and Auto-Dereference
 
-**Overview**  
 Pointers are written `*T`, address-of is `&x`, dereference is `*p`. For field
-access, Pika auto-dereferences pointers: if `p: *point`, then `p.x` works (it
-generates `p->x` in C). This applies through multiple pointer indirections and
-to pointers-to-arrays.
+access, Pika auto-dereferences: if `p: *point`, then `p.x` works (generates
+`p->x` in C). This applies through multiple pointer levels and to
+pointers-to-arrays.
 
-**Description**  
-This is one of the "make the common case easy" features. You still have to opt
-into pointers explicitly, but once you do, accessing fields doesn't become a
-sea of `*` and parentheses. The auto-deref behavior stays predictable because
-it only applies where it's unambiguous: field access and indexing.
-
-**Example**
 ```pika
 type point = struct {
 	x: i32,
@@ -331,22 +273,16 @@ export fn main() void = {
 };
 ```
 
+You still opt into pointers explicitly, but field access doesn't become a sea
+of `*` and parentheses. The auto-deref is predictable: it only applies where
+it's unambiguous - field access and indexing.
+
 ## Nullable Pointers and Narrowing with `match`
 
-**Overview**  
 Pointers are non-nullable by default. If a pointer may be absent, you must say
-so with `nullable *T`. Nullable pointers cannot be dereferenced directly; you
-must narrow them via `match`, typically by binding a non-null pointer with
-`case let p: *T => ...`.
+so with `nullable *T`. Nullable pointers cannot be dereferenced directly - you
+narrow them via `match`:
 
-**Description**  
-The rule is simple: you may only dereference `*T`, never `nullable *T`. The
-idiom is to `match` once at the boundary (e.g. right after a lookup), bind the
-non-null pointer in the non-null arm, and then use it freely inside that arm.
-This turns "maybe null" into "definitely not null" in a way the compiler can
-enforce.
-
-**Example**
 ```pika
 fn deref_or(p: nullable *i32, fallback: i32) i32 = {
 	return match (p) {
@@ -364,27 +300,46 @@ export fn main() void = {
 };
 ```
 
+The rule is simple: you may only dereference `*T`, never `nullable *T`. The
+idiom is to `match` once at the boundary, bind the non-null pointer in the
+success arm, and use it freely inside. This turns "maybe null" into "definitely
+not null" in a way the compiler enforces.
+
+## Enums and `switch`
+
+Enums are declared with `enum { ... }` (optionally with an underlying integer
+type, e.g. `enum u8 { ... }`). Use `switch` to branch on enum values - it must
+be exhaustive unless you add `case =>` as a default.
+
+```pika
+type mood = enum {
+	SUN,
+	RAIN,
+};
+
+fn mood_score(m: mood) i32 = {
+	switch (m) {
+	case mood::SUN => return 10;
+	case mood::RAIN => return 2;
+	};
+};
+
+export fn main() void = {
+	assert(mood_score(mood::SUN) == 10);
+	assert(mood_score(mood::RAIN) == 2);
+};
+```
+
+Enums pair naturally with `switch`: you see all possible states and how they're
+handled in one place. When you want "pick behavior at runtime" without function
+pointers, an enum + switch is the standard pattern.
+
 ## Tagged Unions and `match` on Type
 
-**Overview**  
 Tagged unions are written `(T | U | ...)`. You construct a variant with a cast
-to the union type (`value: union_type`). You inspect a tagged union with
-`match`, using `case Type => ...` arms. A `match` must be exhaustive unless you
-include a default `case =>`.
+(`value: union_type`) and inspect it with `match`, using `case Type =>` arms.
+A `match` must be exhaustive unless you include a default `case =>`.
 
-**Description**  
-Tagged unions are Pika's main tool for "either/or" values: optional results,
-explicit errors, and polymorphic data. Unlike C unions, tagged unions are safe:
-they carry a tag, and `match` forces you to handle every possibility.
-
-If you want a specific numeric variant, cast the value to that type first
-(e.g. `(3.5: f32): number`). If you need multiple integer-like variants in one
-union (for example `i32` and `u32`), it’s a good idea to wrap one of them in a
-small struct — and in this repository’s current `pika2c`, it’s also a practical
-workaround, because integer-to-union construction currently prefers the first
-integer-like variant.
-
-**Example**
 ```pika
 type err = !void;
 
@@ -416,57 +371,18 @@ export fn main() void = {
 };
 ```
 
-## Enums and `switch`
-
-**Overview**  
-Enums are declared with `enum { ... }` (optionally with an underlying integer
-type, e.g. `enum u8 { ... }`). Use `switch` to branch on enum values. Like
-`match`, `switch` is designed to be exhaustive: either cover every case or add
-`case =>` as a default.
-
-**Description**  
-Enums are a great fit for "small set of states." They pair naturally with
-`switch` and make code review easy: you can see all possible states and how
-they're handled in one place. When you want "pick behavior at runtime" (but
-without function pointers), an enum + switch is the go-to pattern.
-
-**Example**
-```pika
-type mood = enum {
-	SUN,
-	RAIN,
-};
-
-fn mood_score(m: mood) i32 = {
-	switch (m) {
-	case mood::SUN => return 10;
-	case mood::RAIN => return 2;
-	};
-};
-
-export fn main() void = {
-	assert(mood_score(mood::SUN) == 10);
-	assert(mood_score(mood::RAIN) == 2);
-};
-```
+Tagged unions are Pika's main tool for "either/or" values: optional results,
+explicit errors, and polymorphic data. They carry a runtime tag, and `match`
+forces you to handle every possibility. You'll see them throughout the standard
+library for error handling (e.g. `file::OpenResult = (i32 | file::FileError)`).
 
 ## Strings (`str`) and the `strings` Module
 
-**Overview**  
-In Pika, `str` is a first-class string type with a known byte
-length. String literals support escapes (`"\n"`, `"\x41"`, `"\u00E9"`,
-`"\U0001F600"`), raw strings using backticks, multi-line strings, concatenation
-by adjacency (`"a" "b"`), and equality (`==`, `!=`). Strings don't expose a
-`.data` field; to work with bytes, use `strings::toutf8` and
-`strings::fromutf8_unsafe`.
+`str` is a first-class type: a pointer plus a byte length. String literals
+support escapes (`"\n"`, `"\x41"`, `"\u00E9"`), raw strings using backticks,
+multi-line strings, concatenation by adjacency (`"a" "b"`), and equality
+(`==`, `!=`).
 
-**Description**  
-Treat `str` as "bytes + length," but don't reach inside it directly. If you want
-to index bytes (or pass a string to `rt::write`), convert to `[]u8` with
-`strings::toutf8`. The conversion is a view (no allocation, no copy), so the
-bytes remain valid as long as the original string does.
-
-**Example**
 ```pika
 use strings;
 
@@ -477,7 +393,7 @@ fn first_byte(s: str) u8 = {
 
 export fn main() void = {
 	let a = "Hello, " "world!";
-	let b= `Hello, world!`;
+	let b = `Hello, world!`;
 
 	assert(a == b);
 	assert(len(a) == 13);
@@ -485,75 +401,123 @@ export fn main() void = {
 };
 ```
 
-## Input and Output with `rt::read` / `rt::write`
+To work with the raw bytes of a string, convert to `[]u8` with
+`strings::toutf8`. The conversion is a view - no allocation, no copy.
+To go back, use `strings::fromutf8_unsafe`.
 
-**Overview**  
-The `rt` module provides minimal system calls. The two you'll reach for most
-often are:
+## Output with `fmt`
 
-- `rt::read(fd: i32, buf: *opaque, count: size) i64`
-- `rt::write(fd: i32, buf: *opaque, count: size) i64`
+The `fmt` module provides two levels of output. For simple cases, print a
+string directly:
 
-These mirror Unix `read(2)`/`write(2)`: return a byte count, `0` for EOF (read),
-or a negative value on error. On non-Linux platforms in this repo, they may be
-stubbed to return `-1`.
-
-**Description**  
-Pika doesn't hide I/O behind a big standard library: you pass explicit buffers
-and lengths. This makes it easy to audit memory usage: you can see exactly where
-bytes go and how many are allowed. The common pattern is "fixed stack buffer,
-read, check, then process only the bytes you actually got."
-
-**Example**
 ```pika
-use rt;
-
-fn echo_once() void = {
-	let buf: [64]u8 = [0...];
-	let n = rt::read(0, &buf[0]: *opaque, len(buf));
-	if (n < 0) {
-		abort();
-	};
-	if (n == 0) {
-		return;
-	};
-	let count: size = n: size;
-	rt::write(1, &buf[0]: *opaque, count);
-};
+use fmt;
 
 export fn main() void = {
-	echo_once();
+	fmt::Prints("name: ");
+	fmt::Printsln("Pika");  // prints "Pika\n"
 };
 ```
 
-## Safety Guarantees and Safety Limits
+For formatted output, you provide a `[]u8` buffer and build the output
+explicitly. Nothing is allocated - you control exactly where the bytes go:
 
-**Overview**  
-Pika tries to make "the safe thing" the default:
+```pika
+use fmt;
 
-- Bounds checks for array/slice indexing
+export fn main() void = {
+	let storage: [256]u8 = [0...];
+	let b: fmt::Buffer = fmt::New(storage[0z..256z]);
+
+	fmt::Write(&b, "count: ");
+	fmt::Wi64(&b, 42);
+	fmt::Write(&b, ", pi: ");
+	fmt::Wf64(&b, 3.14159f64, 4);
+	fmt::Println(&b);  // flushes buffer to stdout + newline
+
+	// F() does %-substitution (up to 5 args)
+	fmt::Clear(&b);
+	fmt::F(&b, "%s + %s = %s", "1", "2", "3");
+	fmt::Println(&b);  // prints "1 + 2 = 3\n"
+};
+```
+
+`fmt::Buffer` is a struct holding a `[]u8` slice and a write index. Functions
+like `Wi64`, `Wu64`, `Wf64`, and `Wbool` format values into the buffer.
+`Print` writes the buffer contents to stdout; `Println` adds a newline.
+`Clear` resets the index to zero so you can reuse the same buffer.
+
+This is the Pika way: you see the buffer, you see the writes, you see the
+flush. No hidden heap allocations, no growable strings, no format-string
+parsing at runtime.
+
+## File I/O
+
+The `file` module wraps platform file operations. Functions return tagged unions
+for error handling - use the `Must*` helpers to unwrap-or-abort:
+
+```pika
+use file;
+use strings;
+
+export fn main() void = {
+	// Write
+	let fd = file::MustOpen("/tmp/pika_demo.txt", "w");
+	let msg = "hello from pika\n";
+	file::MustWrite(fd, strings::toutf8(msg));
+	file::Close(fd);
+
+	// Read back
+	let fd2 = file::MustOpen("/tmp/pika_demo.txt", "r");
+	let buf: [64]u8 = [0...];
+	let n = file::MustRead(fd2, buf[0z..64z]);
+	file::Close(fd2);
+
+	assert(n == len(msg): i64);
+
+	// Clean up
+	file::MustDel("/tmp/pika_demo.txt");
+};
+```
+
+For explicit error handling, use the unwrapped variants with `match`:
+
+```pika
+use file;
+
+fn try_read(path: str) i64 = {
+	let result = file::Open(path, "r");
+	match (result) {
+	case let fd: i32 =>
+		let buf: [64]u8 = [0...];
+		let n = file::MustRead(fd, buf[0z..64z]);
+		file::Close(fd);
+		return n;
+	case file::FileError =>
+		return -1;
+	};
+};
+```
+
+Resources are always explicit: you open a file descriptor, you close it. There
+is no RAII, no garbage collector, no defer. The cost of every operation is
+visible in the source.
+
+## Safety Guarantees
+
+Pika makes "the safe thing" the default:
+
+- Bounds checks on array/slice indexing
 - Compile-time rejection of recursion and function pointers
 - Compile-time enforcement of nullable-pointer checks via `match`
 - Exhaustive `match` and `switch` (unless you add a default case)
-- No variable shadowing (fewer scope surprises)
+- No variable shadowing
 
-Pika also has escape hatches you should treat as "unsafe by review," such as
-untagged `union` and unbounded pointers `*[*]T`.
+The main escape hatch is unbounded pointers `*[*]T`, used for C interop:
 
-**Description**  
-Safety in Pika isn't about making bugs impossible; it's about making bugs loud.
-An out-of-bounds access aborts instead of silently corrupting memory, and a
-nullable pointer forces you to write the null case down explicitly. When you do
-need to dip into lower-level interop (like `*[*]u8`), do it at the edges of your
-program and keep the unsafe surface area small.
-
-**Example**
 ```pika
 use strings;
 
-// Unbounded pointers are useful for C-style interop, but they are not
-// bounds-checked. Slicing them gives you a checked []u8 view, but the caller
-// must still ensure start/end are valid for the underlying buffer.
 fn prefix(raw: *[*]u8, start: size, end: size) str = {
 	let view: []u8 = raw[start..end];
 	return strings::fromutf8_unsafe(view);
@@ -565,3 +529,7 @@ export fn main() void = {
 	assert(prefix(raw, 0, 4) == "PIKA");
 };
 ```
+
+Unbounded pointers are not bounds-checked. Use them at the edges of your
+program for C interop, and convert to checked slices as soon as possible. Keep
+the unsafe surface area small.

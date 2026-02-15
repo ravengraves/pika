@@ -48,19 +48,19 @@ case "$PLATFORM" in
     CFLAGS="$CFLAGS_COMMON -march=native -mtune=native -mshstk \
 -fno-builtin -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
 -fno-stack-protector -fno-ident \
--Wl,--gc-sections,--build-id=none,--strip-all -static -s" ;;
+-Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
   aarch64_raw)
     CFLAGS="$CFLAGS_COMMON \
 -fno-builtin -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
 -fno-stack-protector -fno-ident \
--Wl,--gc-sections,--build-id=none,--strip-all -static -s" ;;
+-Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
   libc)
     CFLAGS="$CFLAGS_COMMON -march=native -mtune=native \
--D_GNU_SOURCE -Wno-unused-result -Wl,--gc-sections -s"
+-D_GNU_SOURCE -Wno-unused-result -Wl,--gc-sections -flto -s"
     LIBS="-lrt" ;;
   win64)
     CFLAGS="$CFLAGS_COMMON \
--Wno-unused-result -mconsole -Wl,--gc-sections -s"
+-Wno-unused-result -mconsole -Wl,--gc-sections -flto -s"
     LIBS="-lws2_32 -lbcrypt" ;;
   *)
     echo "Unknown platform: $PLATFORM" >&2; exit 1 ;;
@@ -113,7 +113,7 @@ cat "$PLATFORM_H" "${TARGET_C[@]}" > "$LIBPK_C"
 # --- Build single translation unit ---
 {
   printf '%s' "$RT_FWD"
-  cat "${CFILES[@]}" 2>/dev/null
+  if [ ${#CFILES[@]} -gt 0 ]; then cat "${CFILES[@]}"; fi
   # Compile each lib module with -N <modname>
   for pka in "${LIBPK_MODULES[@]}"; do
     modname=$(basename "$(dirname "$pka")")

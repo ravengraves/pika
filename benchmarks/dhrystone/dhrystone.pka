@@ -207,13 +207,7 @@ export fn main() void = {
 	dhry_str_set(&dhry_StrGlb: *[*]u8, "DHRYSTONE PROGRAM, SOME STRING");
 	dhry_str_set(&dhry_Str1Loc: *[*]u8, "DHRYSTONE PROGRAM, 1'ST STRING");
 
-	bench_write("Dhrystone Benchmark (Pika)\n\n");
-
 	let loops: u64 = 100_000_000;
-
-	bench_write("Running ");
-	bench_write_u64(loops);
-	bench_write(" iterations...\n");
 
 	dhry_Array2Glob[8 * 51 + 7] = 10;
 
@@ -263,6 +257,41 @@ export fn main() void = {
 	let end_ns = bench_time_ns();
 	let elapsed = bench_elapsed_s(start_ns, end_ns);
 
+	bench_nl();
+	bench_write("Dhrystone Benchmark, Version 1.1 (Language: Pika)\n");
+	bench_nl();
+
+	bench_write_f64_right((loops: f64), 0, 12);
+	bench_write(" runs ");
+	bench_write_f64(elapsed, 2);
+	bench_write(" seconds \n");
+	bench_nl();
+
+	bench_write("Array2Glob8/7: ");
+	if (dhry_Array2Glob[8 * 51 + 7] == (loops: i32) + 10) {
+		bench_write("O.K.  ");
+	} else {
+		bench_write("WRONG ");
+	};
+	bench_write_f64_right((dhry_Array2Glob[8 * 51 + 7]: f64), 0, 12);
+	bench_nl();
+
+	let usec = elapsed * 1000000.0f64 / (loops: f64);
+	let dps = (loops: f64) / elapsed;
+	let vax_mips = dps / 1757.0f64;
+
+	bench_nl();
+	bench_write("Microseconds for one run through Dhrystone: ");
+	bench_write_f64_right(usec, 2, 12);
+	bench_write(" \n");
+	bench_write("Dhrystones per Second:                      ");
+	bench_write_f64_right(dps, 0, 10);
+	bench_write(" \n");
+	bench_write("VAX  MIPS rating =                          ");
+	bench_write_f64_right(vax_mips, 2, 12);
+	bench_write(" \n");
+	bench_nl();
+
 	// Anti-DCE: print all global state to prevent dead store elimination
 	bench_write("Global values (anti-DCE check):\n");
 	bench_write("  IntGlob:      "); bench_write_i32(dhry_IntGlob); bench_nl();
@@ -270,39 +299,15 @@ export fn main() void = {
 	bench_write("  Char1Glob:    "); bench_write_i32(dhry_Char1Glob: i32); bench_nl();
 	bench_write("  Char2Glob:    "); bench_write_i32(dhry_Char2Glob: i32); bench_nl();
 	bench_write("  Array1Glob[8]:"); bench_write_i32(dhry_Array1Glob[8]); bench_nl();
-	bench_write("  Array2Glob[8][7]: ");
-	if (dhry_Array2Glob[8 * 51 + 7] == (loops: i32) + 10) {
-		bench_write("O.K.");
-	} else {
-		bench_write("WRONG ");
-		bench_write_i32(dhry_Array2Glob[8 * 51 + 7]);
-	};
-	bench_nl();
 	bench_write("  RecGlb.int_comp:  "); bench_write_i32(dhry_RecGlb.int_comp); bench_nl();
 	bench_write("  RecGlb.enum_comp: "); bench_write_i32(dhry_RecGlb.enum_comp); bench_nl();
 	bench_write("  RecNext.discr:    "); bench_write_i32(dhry_RecNext.discr); bench_nl();
 	bench_write("  RecNext.enum_comp:"); bench_write_i32(dhry_RecNext.enum_comp); bench_nl();
 	bench_write("  RecNext.int_comp: "); bench_write_i32(dhry_RecNext.int_comp); bench_nl();
 	bench_write("  RecNext.ptr_comp: "); bench_write_i32(dhry_RecNext.ptr_comp); bench_nl();
-	// Print string checksums to prevent dead store elimination of str_cpy
 	let str_chk: i32 = 0;
 	for (let i = 0z; i < 31; i += 1) {
 		str_chk += (dhry_StrGlb[i]: i32) + (dhry_StrNext[i]: i32);
 	};
 	bench_write("  StrChecksum:      "); bench_write_i32(str_chk); bench_nl();
-	bench_nl();
-
-	let usec = elapsed * 1000000.0f64 / (loops: f64);
-	let dps = (loops: f64) / elapsed;
-	let vax_mips = dps / 1757.0f64;
-
-	bench_write("Microseconds per run:   ");
-	bench_write_f64(usec, 2);
-	bench_nl();
-	bench_write("Dhrystones per second:  ");
-	bench_write_f64(dps, 0);
-	bench_nl();
-	bench_write("VAX MIPS rating:        ");
-	bench_write_f64(vax_mips, 2);
-	bench_nl();
 };

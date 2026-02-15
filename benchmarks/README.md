@@ -57,32 +57,13 @@ Pika implementations are original ports following the same algorithms.
 ## Running
 
 ```
-make benchmark                    # run all Pika benchmarks
-make benchmark-whetstone          # individual Pika benchmarks
-make benchmark-dhrystone
-make benchmark-livermore
-make benchmark-memspeed
-make benchmark-linpack
-make benchmark-mandelbrot
-
-make benchmark-c                  # run all C reference benchmarks
-make benchmark-c-whetstone        # individual C benchmarks
-make benchmark-c-dhrystone
-make benchmark-c-livermore
-make benchmark-c-memspeed
-make benchmark-c-linpack
-make benchmark-c-mandelbrot
-
-make benchmark-rust               # run all Rust reference benchmarks
-make benchmark-rust-whetstone     # individual Rust benchmarks
-make benchmark-rust-dhrystone
-make benchmark-rust-livermore
-make benchmark-rust-memspeed
-make benchmark-rust-linpack
-make benchmark-rust-mandelbrot
+ninja bench                       # run all Pika benchmarks (+ math)
+ninja bench_c                     # run all C reference benchmarks
+ninja bench_rs                    # run all Rust reference benchmarks
+ninja bench_all                   # run all benchmarks (Pika + C + Rust)
 ```
 
-Override the C compiler: `CC=clang bin/pikacc ...` or `BENCH_CC=clang make benchmark-c-...`
+Override the C compiler: `CC=clang bin/pikacc ...` or `BENCH_CC=clang scripts/benchmark_c.sh`
 
 ## Test Environment
 
@@ -110,63 +91,64 @@ Mandelbrot:     Pika uses CC=clang (Clang auto-vectorizes better than GCC for th
 
 ```
  Single Precision C/C++ Whetstone Benchmark
-         GCC/Clang Linux
-         -O3 -ffast-math
+
+Compiler        GCC/Clang Linux
+OptLevel        -O3 -ffast-math
 
 Loop content                  Result              MFLOPS      MOPS   Seconds
 
-N1 floating point     -1.12475013732910156      2327.400              0.087
-N2 floating point     -1.12274742126464844      2326.200              0.604
-N3 if then else        0.00000000000000000                7302.100    0.149
-N4 fixed point        12.00000000000000000                6789.700    0.487
-N5 sin,cos etc.        0.49911010265350342                 380.100    2.293
-N6 floating point      0.99999982118606567      1517.400              3.737
-N7 assignments         3.00000000000000000                2229.700    0.874
-N8 exp,sqrt etc.       0.75110864639282227                 225.000    1.738
+N1 floating point     -1.12475013732910156      2396.520              0.087
+N2 floating point     -1.12274742126464844      2259.843              0.644
+N3 if then else        0.00000000000000000                9480.095    0.118
+N4 fixed point        12.00000000000000000                6878.722    0.496
+N5 sin,cos etc.        0.49911010265350342                 373.421    2.412
+N6 floating point      0.99999982118606567      1613.463              3.620
+N7 assignments         3.00000000000000000                2219.482    0.901
+N8 exp,sqrt etc.       0.75110864639282227                 228.626    1.762
 
-MWIPS                                          10536.000              9.969
+MWIPS                                          10784.147             10.040
 ```
 
 #### Rust
 
 ```
-Rust Whetstone Benchmark (Single Precision)
-Passes: 1 x 100000
+ Single Precision Rust Whetstone Benchmark
+         rustc Linux
+         -C opt-level=3
 
-Loop content            MFLOPS/MOPS   Seconds
--------------------     -----------   -------
-N1 floating point       2296.9         0.008
-N2 floating point       2298.1         0.059
-N3 if then else         8102.9         0.013
-N4 fixed point          7013.7         0.045
-N5 sin,cos etc.         528.6         0.157
-N6 floating point       1552.6         0.347
-N7 assignments          11493.0         0.016
-N8 exp,sqrt etc.        230.5         0.161
+Loop content                  Result              MFLOPS      MOPS   Seconds
 
-MWIPS                   11335.500         0.882
-Check: 20.069014
+N1 floating point      0.00069511670153588      2356.545              0.008
+N2 floating point      0.00022303528385237      2250.621              0.060
+N3 if then else        1.00000000000000000                8481.233    0.012
+N4 fixed point        12.00000000000000000                6964.327    0.045
+N5 sin,cos etc.        0.10020098090171814                 543.286    0.153
+N6 floating point      0.99999982118606567      1597.170              0.338
+N7 assignments         3.00000000000000000               16891.142    0.011
+N8 exp,sqrt etc.       0.86883735656738281                 238.163    0.156
+
+MWIPS                                          12766.519              0.783
 ```
 
 #### Pika GCC
 
 ```
-Pika Whetstone Benchmark (Single Precision)
-Passes: 1 x 100000
+ Single Precision Pika Whetstone Benchmark
+         GCC Linux
+         -O3 -ffast-math
 
-Loop content            MFLOPS/MOPS   Seconds
--------------------     -----------   -------
-N1 floating point       2409.3         0.008
-N2 floating point       2258.5         0.060
-N3 if then else         7511.5         0.014
-N4 fixed point          6218.9         0.051
-N5 sin,cos etc.         513.8         0.162
-N6 floating point       1555.1         0.347
-N7 assignments          2135.6         0.087
-N8 exp,sqrt etc.        172.1         0.216
+Loop content                  Result              MFLOPS      MOPS   Seconds
 
-MWIPS                   9850.600         1.015
-Check: 20.827355
+N1 floating point      0.00073150539537891      2494.993              0.007
+N2 floating point      0.00024535151896998      2334.446              0.057
+N3 if then else        1.00000000000000000               11775.921    0.008
+N4 fixed point        12.00000000000000000                6464.861    0.048
+N5 sin,cos etc.        0.62357258796691894                 531.957    0.156
+N6 floating point      0.99999982118606567      1677.773              0.321
+N7 assignments         3.00000000000000000                2255.937    0.081
+N8 exp,sqrt etc.       0.58048993349075317                 180.211    0.206
+
+MWIPS                                          11248.289              0.889
 ```
 
 #### Whetstone Summary
@@ -192,73 +174,41 @@ All sections use compiler barriers to prevent dead code elimination. N3 uses `el
 ```
 Dhrystone Benchmark, Version 1.1 (Language: C)
 
-       10000 runs   0.00 seconds
-      100000 runs   0.00 seconds
-     1000000 runs   0.00 seconds
-    10000000 runs   0.04 seconds
-   100000000 runs   0.41 seconds
-   200000000 runs   0.81 seconds
-   400000000 runs   1.63 seconds
-   800000000 runs   3.26 seconds
   1600000000 runs   6.53 seconds
 
 Array2Glob8/7: O.K.    1600000010
 
 Microseconds for one run through Dhrystone:         0.00
-Dhrystones per Second:                       245129093
-VAX  MIPS rating =                             139515.70
+Dhrystones per Second:                       244919190
+VAX  MIPS rating =                             139396.24
 ```
 
 #### Rust
 
 ```
-Dhrystone Benchmark (Rust)
+Dhrystone Benchmark, Version 1.1 (Language: Rust)
 
-Running 100000000 iterations...
-Global values (anti-DCE check):
-  IntGlob:      5
-  BoolGlob:     1
-  Char1Glob:    65
-  Char2Glob:    66
-  Array1Glob[8]:7
-  Array2Glob[8][7]: O.K.
-  RecGlb.int_comp:  17
-  RecGlb.enum_comp: 2
-  RecNext.discr:    0
-  RecNext.enum_comp:1
-  RecNext.int_comp: 18
-  RecNext.ptr_comp: 0
-  StrChecksum:      4318
+   100000000 runs   0.55 seconds
 
-Microseconds per run:   0.01
-Dhrystones per second:  171568700
-VAX MIPS rating:        97648.66
+Array2Glob8/7: O.K.     100000010
+
+Microseconds for one run through Dhrystone:         0.01
+Dhrystones per Second:                       181349341
+VAX  MIPS rating =                             103215.33
 ```
 
 #### Pika Clang
 
 ```
-Dhrystone Benchmark (Pika)
+Dhrystone Benchmark, Version 1.1 (Language: Pika)
 
-Running 100000000 iterations...
-Global values (anti-DCE check):
-  IntGlob:      5
-  BoolGlob:     1
-  Char1Glob:    65
-  Char2Glob:    66
-  Array1Glob[8]:7
-  Array2Glob[8][7]: O.K.
-  RecGlb.int_comp:  17
-  RecGlb.enum_comp: 2
-  RecNext.discr:    0
-  RecNext.enum_comp:1
-  RecNext.int_comp: 18
-  RecNext.ptr_comp: 0
-  StrChecksum:      4318
+   100000000 runs 0.36 seconds
 
-Microseconds per run:   0.00
-Dhrystones per second:  451801866
-VAX MIPS rating:        257144
+Array2Glob8/7: O.K.     100000010
+
+Microseconds for one run through Dhrystone:         0.00
+Dhrystones per Second:                       272566561
+VAX  MIPS rating =                             155131.79
 ```
 
 #### Dhrystone Summary
@@ -581,8 +531,8 @@ C reference: Kevin Miller's Benchmarks Game #6 - explicit SSE2 SIMD (8 pixels vi
 #### Pika Clang (N=16000)
 
 ```
-$ make benchmark-mandelbrot
-bash -c 'time build/benchmarks/mandelbrot/mandelbrot > /dev/null'
+$ ninja bench  # mandelbrot excerpt
+time build/benchmarks/mandelbrot/mandelbrot > /dev/null
 
 real    0m0.721s
 user    0m0.767s
@@ -592,8 +542,8 @@ sys 0m0.000s
 #### Rust (N=16000)
 
 ```
-$ make benchmark-rust-mandelbrot
-bash -c 'time build/benchmarks/mandelbrot/mandelbrot_rs > /dev/null'
+$ ninja bench_rs  # mandelbrot excerpt
+time build/benchmarks/mandelbrot/mandelbrot_rs > /dev/null
 
 real    0m0.985s
 user    0m1.042s
@@ -603,8 +553,8 @@ sys 0m0.004s
 #### C GCC (N=16000, single-thread)
 
 ```
-$ make benchmark-c-mandelbrot
-bash -c 'time OMP_NUM_THREADS=1 build/benchmarks/mandelbrot/mandelbrot_c 16000 > /dev/null'
+$ ninja bench_c  # mandelbrot excerpt
+time OMP_NUM_THREADS=1 build/benchmarks/mandelbrot/mandelbrot_c 16000 > /dev/null
 
 real    0m1.565s
 user    0m1.659s
@@ -643,28 +593,7 @@ Both Pika and Rust beat the hand-tuned C SSE2 reference. The 32-wide inner loop 
 
 **Rust matches C on memory-bound workloads** (memcpy at L2+, vector copy at RAM scale) and leads on Whetstone (11,336 MWIPS vs C's 10,536) thanks to zero-cost `asm!` register barriers for anti-DCE, but loses on FP reductions (dot product, Livermore inner product) where strict IEEE 754 semantics prevent LLVM from vectorizing accumulation loops without `-ffast-math`. LINPACK is 2.5x slower in Rust due to denormal float handling — Rust preserves IEEE 754 denormal semantics while C/Pika flush denormals to zero via FTZ/DAZ. Rust keeps up on Mandelbrot where the `[f64; 32]` local array pattern vectorizes well via LLVM's SLP vectorizer.
 
-## Implementation Notes
-
-Pika benchmarks follow all language constraints:
-- No recursion, no dynamic memory allocation, no function pointers
-- All data in static global arrays
-- Anti-DCE: results accumulated in globals and printed as checksums
-- `f32` suffix required on float literals to avoid implicit conversion warnings
-- Empty match cases use `void;` (not `{}`)
-- Dhrystone routes loop variables (`ch`, `enumloc`) through a global + `compiler_barrier()` to make them opaque to the optimizer. Without this, Clang's single-TU inlining proves `Func1(ch,'C')` is constant and eliminates the entire character loop body
-- Dhrystone uses `rt::memcmp` for ordered string comparison (inlined, auto-vectorized)
-- Livermore K1/K7/K12 use `rt::compiler_barrier()` after inner loops to prevent GCC from eliminating redundant outer iterations (GCC recognizes loop-invariant write patterns and collapses to a single iteration without barriers)
-- LINPACK uses checksum accumulation (`lp_check += b[0]` after each `dgesl`) to prevent DCE of back-substitution; `size` type indices for better vectorization of BLAS routines
-
-Rust benchmarks use idiomatic Rust:
-- `static mut` global arrays with `unsafe` blocks (MemSpeed, Dhrystone, Livermore, Whetstone) — matches C/Pika's global array pattern for fair comparison
-- `std::hint::black_box()` for anti-DCE (stable since Rust 1.66)
-- `std::time::Instant` for timing
-- `std::io::BufWriter` for buffered output (Mandelbrot)
-- No external crates - `std` only
-- Compiled with `rustc` directly (no Cargo)
-
-### Compiler Flags
+## Compiler Flags
 
 **C (GCC):** `gcc -O3 -ffast-math -funroll-loops -ftree-vectorize -march=native -mtune=native -finline-functions -fno-strict-aliasing -flto`
 

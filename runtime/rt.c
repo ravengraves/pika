@@ -58,7 +58,6 @@ void rt_memcpy(void* __restrict__ dest, const void* __restrict__ src, size_t n) 
 	if (HARE_IS_ALIGNED(d) && HARE_IS_ALIGNED(s)) {
 		size_t* dw = (size_t*)d;
 		const size_t* sw = (const size_t*)s;
-
 		if (n >= 32768) {
 			/* Large copy (> L1): prefetch hides L2/L3/RAM latency */
 			while (n >= 8 * HARE_WORD_SIZE) {
@@ -94,7 +93,12 @@ void rt_memcpy(void* __restrict__ dest, const void* __restrict__ src, size_t n) 
 		s = (const uint8_t*)sw;
 	}
 	/* Byte remainder (or entire copy if unaligned) */
-	while (n--) *d++ = *s++;
+	while (n > 0) {
+		*d = *s;
+		d += 1;
+		s += 1;
+		n -= 1;
+	}
 }
 
 void rt_memmove(void* dest, const void* src, size_t n) {

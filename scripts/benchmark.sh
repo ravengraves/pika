@@ -19,7 +19,7 @@ build/benchmarks/dhrystone/dhrystone
 
 echo "=== Pika mandelbrot ==="
 CC=clang bin/pikacc benchmarks/bench.pka benchmarks/mandelbrot/mandelbrot.pka pikabench.c -o build/benchmarks/mandelbrot/mandelbrot
-time build/benchmarks/mandelbrot/mandelbrot > /dev/null
+build/benchmarks/mandelbrot/mandelbrot > /dev/null
 
 echo "=== Pika livermore ==="
 bin/pikacc benchmarks/bench.pka benchmarks/livermore/livermore.pka pikabench.c -o build/benchmarks/livermore/livermore
@@ -36,7 +36,7 @@ build/benchmarks/linpack/linpack
 echo ""
 echo "=== Math benchmark ==="
 mkdir -p build/benchmarks
-cat stdlib/math.pka | ./bin/pika2c > build/benchmarks/math_benchmark.c
+{ printf '%s\n' '-N math'; cat lib/math/math.pka; } | ./bin/pika2c > build/benchmarks/math_benchmark.c
 cat benchmarks/math_benchmark.c >> build/benchmarks/math_benchmark.c
 
 echo "--- GCC ---"
