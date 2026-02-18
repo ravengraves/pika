@@ -17,4 +17,4 @@ done
 
 echo "=== Rust mandelbrot ==="
 rustc $BENCH_RUSTFLAGS -o build/benchmarks/mandelbrot/mandelbrot_rs benchmarks/rust_reference/mandelbrot_ref.rs
-time build/benchmarks/mandelbrot/mandelbrot_rs > /dev/null
+build/benchmarks/mandelbrot/mandelbrot_rs > /dev/null

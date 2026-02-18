@@ -18,4 +18,4 @@ done
 
 echo "=== C mandelbrot ==="
 $BENCH_CC $BENCH_CFLAGS -fno-finite-math-only -fopenmp -o build/benchmarks/mandelbrot/mandelbrot_c benchmarks/c_reference/mandelbrot_ref.c
-time OMP_NUM_THREADS=1 build/benchmarks/mandelbrot/mandelbrot_c 16000 > /dev/null
+env OMP_NUM_THREADS=1 build/benchmarks/mandelbrot/mandelbrot_c 16000 > /dev/null

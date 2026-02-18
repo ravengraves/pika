@@ -38,10 +38,17 @@ esac
 # --- Flags ---
 CFLAGS_COMMON="-std=c11 -Wall -Wextra -Wconversion -Wfloat-conversion \
 -Wno-overlength-strings -Wno-unused-function -Wno-unused-variable \
--Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality \
 -ffunction-sections -fdata-sections \
 -O${OPTLEVEL} -ffast-math -fno-finite-math-only -funroll-loops -ftree-vectorize \
 -finline-functions -fno-strict-aliasing"
+
+# Avoid passing Clang-only warning flags to GCC.
+CC_VERSION=$($CC --version 2>/dev/null | head -n1 || true)
+# If $CC is clang (or anything that contains the word “clang”),
+# add the warning‑suppressions that only clang understands.
+if [[ "$(basename "$CC")" == clang ]]; then
+  CFLAGS_COMMON+=" -Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality"
+fi
 
 case "$PLATFORM" in
   x86_64_raw)
@@ -101,14 +108,25 @@ while IFS= read -r f; do
 done < <(find lib -name '*.pka' -type f | sort)
 
 PLATFORM_H="lib/platform+${LIB_TARGET}.h"
+TARGET_PATTERNS=( -name "*+${LIB_TARGET}.c" )
+case "$PLATFORM" in
+  x86_64_raw|aarch64_raw)
+    TARGET_PATTERNS+=( -o -name "*+raw.c" ) ;;
+esac
+
+COMMON_C=()
+while IFS= read -r f; do
+  COMMON_C+=("$f")
+done < <(find lib -type f -name '*.c' ! -name '*+*.c' | sort)
+
 TARGET_C=()
 while IFS= read -r f; do
   TARGET_C+=("$f")
-done < <(find lib -name "*+${LIB_TARGET}.c" -type f | sort)
+done < <(find lib -type f \( "${TARGET_PATTERNS[@]}" \) | sort)
 
 # Concatenate platform C backing into temp file
 LIBPK_C=$(mktemp /tmp/libpka-XXXXXX.c)
-cat "$PLATFORM_H" "${TARGET_C[@]}" > "$LIBPK_C"
+cat "$PLATFORM_H" "${COMMON_C[@]}" "${TARGET_C[@]}" > "$LIBPK_C"
 
 # --- Build single translation unit ---
 {

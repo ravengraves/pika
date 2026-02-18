@@ -1,3 +1,5 @@
+#![allow(static_mut_refs)]
+
 // livermore_ref.rs - Livermore Loops (LLNL Kernels) for Rust
 // Subset of the 24 LLNL computational kernels.
 // Matches Pika livermore.pka benchmark parameters.

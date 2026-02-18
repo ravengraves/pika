@@ -110,10 +110,6 @@ _Bool pk_proc_isroot(void) {
 	return pk_syscall0(__PK_SYS_geteuid) == 0;
 }
 
-int32_t pk_proc_minprio(void) { return -20; }
-
-int32_t pk_proc_maxprio(void) { return 20; }
-
 proc_VoidResult pk_proc_setprio(int32_t pid, int32_t level) {
 	proc_VoidResult r;
 	int32_t nice_val = -level;

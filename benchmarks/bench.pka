@@ -4,32 +4,32 @@
 use rt;
 use strings;
 use clock;
-use fmt;
+use fb;
 
 // Write a string to stdout
 fn bench_write(s: str) void = {
-    fmt::Prints(s);
+    fb::Prints(s);
 };
 
 // Write a newline to stdout
 fn bench_nl() void = {
-    fmt::Prints("\n");
+    fb::Prints("\n");
 };
 
 // Write an unsigned 64-bit integer to stdout
 fn bench_write_u64(val: u64) void = {
     let storage: [24]u8 = [0...];
-    let b = fmt::New(storage[0z..24z]);
-    fmt::Wu64(&b, val);
-    fmt::Print(&b);
+    let b = fb::New(storage[0z..24z]);
+    fb::Wu64(&b, val);
+    fb::Print(&b);
 };
 
 // Write a signed 64-bit integer to stdout
 fn bench_write_i64(n: i64) void = {
     let storage: [24]u8 = [0...];
-    let b = fmt::New(storage[0z..24z]);
-    fmt::Wi64(&b, n);
-    fmt::Print(&b);
+    let b = fb::New(storage[0z..24z]);
+    fb::Wi64(&b, n);
+    fb::Print(&b);
 };
 
 // Write a signed 32-bit integer to stdout
@@ -40,42 +40,42 @@ fn bench_write_i32(n: i32) void = {
 // Write val as decimal, zero-padded to width digits
 fn bench_write_padded(val: u64, width: i32) void = {
     let storage: [24]u8 = [0...];
-    let b = fmt::New(storage[0z..24z]);
-    fmt::Wu64(&b, val, "dec", width);
-    fmt::Print(&b);
+    let b = fb::New(storage[0z..24z]);
+    fb::Wu64(&b, val, "dec", width);
+    fb::Print(&b);
 };
 
 // Write an f64 with given decimal places
 fn bench_write_f64(v: f64, decimals: i32) void = {
     let storage: [64]u8 = [0...];
-    let b = fmt::New(storage[0z..64z]);
-    fmt::Wf64(&b, v, decimals, "dec");
-    fmt::Print(&b);
+    let b = fb::New(storage[0z..64z]);
+    fb::Wf64(&b, v, decimals, "dec");
+    fb::Print(&b);
 };
 
 // Write n space characters
 fn bench_write_spaces(n: i32) void = {
     let storage: [64]u8 = [0...];
-    let b = fmt::New(storage[0z..64z]);
+    let b = fb::New(storage[0z..64z]);
     let count: i32 = n;
     if (count > 64) { count = 64; };
     for (let i: i32 = 0; i < count; i += 1) {
-        fmt::Write(&b, " ");
+        fb::Write(&b, " ");
     };
-    fmt::Print(&b);
+    fb::Print(&b);
 };
 
 // Write an f64 right-aligned in a field of given width
 fn bench_write_f64_right(v: f64, decimals: i32, width: i32) void = {
     let storage: [64]u8 = [0...];
-    let b = fmt::New(storage[0z..64z]);
-    fmt::Wf64(&b, v, decimals, "dec");
+    let b = fb::New(storage[0z..64z]);
+    fb::Wf64(&b, v, decimals, "dec");
     let slen: i32 = b.index: i32;
     let pad: i32 = width - slen;
     if (pad > 0) {
         bench_write_spaces(pad);
     };
-    fmt::Print(&b);
+    fb::Print(&b);
 };
 
 // Get monotonic time in nanoseconds

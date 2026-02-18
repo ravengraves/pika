@@ -130,8 +130,8 @@ _Bool pk_file_exists(pk_str path) {
 }
 
 _Bool pk_file_is_dir(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_DIR) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_DIR) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
 	char cbuf[4096];
 	pk_str_to_cstr(path, cbuf, sizeof(cbuf));
 	DWORD attr = GetFileAttributesA(cbuf);
@@ -140,8 +140,8 @@ _Bool pk_file_is_dir(pk_str path) {
 }
 
 _Bool pk_file_is_file(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_REG) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_REG) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
 	char cbuf[4096];
 	pk_str_to_cstr(path, cbuf, sizeof(cbuf));
 	DWORD attr = GetFileAttributesA(cbuf);
@@ -150,8 +150,8 @@ _Bool pk_file_is_file(pk_str path) {
 }
 
 _Bool pk_file_is_link(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_LNK) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_WIN_DT_LNK) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_WIN_DT_UNKNOWN) return 0;
 	char cbuf[4096];
 	pk_str_to_cstr(path, cbuf, sizeof(cbuf));
 	DWORD attr = GetFileAttributesA(cbuf);
@@ -354,18 +354,7 @@ file_DirEntry pk_file_dirnext(int64_t handle, pk_slice_u8 buf) {
 		}
 
 		char* d_name = ds->findData.cFileName;
-
-		/* Skip . and .. */
-		if (d_name[0] == '.') {
-			if (d_name[1] == '\0') continue;
-			if (d_name[1] == '.' && d_name[2] == '\0') continue;
-		}
-
-		size_t namelen = 0;
-		while (d_name[namelen] != '\0') namelen++;
-
-		size_t copylen = namelen < buf.len ? namelen : buf.len;
-		for (size_t i = 0; i < copylen; i++) buf.data[i] = (uint8_t)d_name[i];
+		if (pk_file_is_dot_or_dotdot(d_name)) continue;
 
 		/* Determine file type for dir cache */
 		DWORD attr = ds->findData.dwFileAttributes;
@@ -378,17 +367,7 @@ file_DirEntry pk_file_dirnext(int64_t handle, pk_slice_u8 buf) {
 			dtype = PK_WIN_DT_REG;
 		}
 
-		/* Update dir cache */
-		size_t cachelen = namelen < sizeof(pk__dir_last_name) - 1 ? namelen : sizeof(pk__dir_last_name) - 1;
-		for (size_t i = 0; i < cachelen; i++) pk__dir_last_name[i] = d_name[i];
-		pk__dir_last_name[cachelen] = '\0';
-		pk__dir_last_name_len = cachelen;
-		pk__dir_last_type = dtype;
-
-		r.tag = 0;
-		r.val._0.data = buf.data;
-		r.val._0.len = copylen;
-		return r;
+		return pk_file_make_dir_entry(buf, d_name, dtype);
 	}
 }
 

@@ -549,6 +549,9 @@ export fn main() void = {
 	bench_write_f64(lp_atime[3 * 15 + 12], 2);
 	bench_nl();
 
+	// Keep the final LU status live to avoid unused-set warnings in C output.
+	lp_check += (info: f64) * 0.0f64;
+
 	// --- Final result: minimum of two averages ---
 	let mflops = lp_atime[3 * 15 + 6];
 	if (lp_atime[3 * 15 + 12] < mflops) { mflops = lp_atime[3 * 15 + 12]; };

@@ -123,15 +123,6 @@ static uint8_t pk__dir_last_type = 0; /* 0=unknown, 1=file, 2=dir, 3=symlink */
 #define PK_WIN_DT_DIR     2
 #define PK_WIN_DT_LNK     3
 
-static int pk_dir_cache_match(pk_str path) {
-	if (pk__dir_last_name_len == 0) return 0;
-	if (path.len != pk__dir_last_name_len) return 0;
-	for (size_t i = 0; i < path.len; i++) {
-		if (path.data[i] != (uint8_t)pk__dir_last_name[i]) return 0;
-	}
-	return 1;
-}
-
 /* ========================================================================
  * Directory listing pool (8 slots)
  * ======================================================================== */
@@ -256,8 +247,8 @@ typedef struct { uint16_t tag; union { void* _0; intptr_t _1; } val; } shm_OpenR
 /* crypt module */
 typedef struct { uint16_t tag; union { intptr_t _0; intptr_t _1; } val; } crypt_RandomResult;
 
-/* fmt module */
-typedef struct { pk_slice_u8 buf; size_t index; } fmt_Buffer;
+/* fb module */
+typedef struct { pk_slice_u8 buf; size_t index; } fb_Buffer;
 
 /* io_PollFd for pollmany */
 typedef struct { int32_t fd; int16_t events; int16_t revents; } io_PollFd;

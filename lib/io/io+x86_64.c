@@ -41,12 +41,5 @@ io_InputResult pk_io_input(pk_slice_u8 buf, pk_str prompt, int32_t timeout) {
 	/* Read from stdin */
 	int64_t n = pk_syscall3(__PK_SYS_read, 0, (int64_t)buf.data, (int64_t)buf.len);
 	if (n < 0) { r.tag = 2; r.val._2 = 0; return r; }
-	/* Strip trailing newline */
-	size_t len = (size_t)n;
-	if (len > 0 && buf.data[len - 1] == '\n') len--;
-	if (len > 0 && buf.data[len - 1] == '\r') len--;
-	r.tag = 0;
-	r.val._0.data = buf.data;
-	r.val._0.len = len;
-	return r;
+	return pk_io_input_ok(buf, pk_io_trim_line_end(buf, (size_t)n));
 }

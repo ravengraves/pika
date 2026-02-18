@@ -372,8 +372,8 @@ typedef struct { uint16_t tag; union { void* _0; intptr_t _1; } val; } shm_OpenR
 /* crypt module */
 typedef struct { uint16_t tag; union { intptr_t _0; intptr_t _1; } val; } crypt_RandomResult;
 
-/* fmt module */
-typedef struct { pk_slice_u8 buf; size_t index; } fmt_Buffer;
+/* fb module */
+typedef struct { pk_slice_u8 buf; size_t index; } fb_Buffer;
 
 /* io_PollFd for pollmany */
 typedef struct { int32_t fd; int16_t events; int16_t revents; } io_PollFd;

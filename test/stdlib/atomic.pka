@@ -1,5 +1,5 @@
 use atomic;
-use fmt;
+use fb;
 
 export fn main() void = {
 	// Init and Load
@@ -44,6 +44,6 @@ export fn main() void = {
 	};
 	assert(atomic::Load(&a) == 15u64);
 
-	fmt::Prints("stdlib/atomic: ");
-	fmt::Printsln("OK");
+	fb::Prints("stdlib/atomic: ");
+	fb::Printsln("OK");
 };

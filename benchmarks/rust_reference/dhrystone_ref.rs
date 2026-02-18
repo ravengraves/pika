@@ -1,3 +1,6 @@
+#![allow(static_mut_refs)]
+#![allow(unused_assignments)]
+
 // dhrystone_ref.rs - Dhrystone Benchmark 1.1 for Rust
 // Adapted from Reinhold P. Weicker's Dhrystone 1.1
 // Output format matches C reference

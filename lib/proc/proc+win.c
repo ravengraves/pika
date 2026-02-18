@@ -207,14 +207,6 @@ _Bool pk_proc_isroot(void) {
 	return 0;
 }
 
-int32_t pk_proc_minprio(void) {
-	return -2;
-}
-
-int32_t pk_proc_maxprio(void) {
-	return 2;
-}
-
 proc_VoidResult pk_proc_setprio(int32_t pid, int32_t level) {
 	proc_VoidResult r;
 	int slot = pk_proc_find_by_pid(pid);

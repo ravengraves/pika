@@ -1,4 +1,4 @@
-/* pk_crypt.c — Cryptographic primitives for x86_64 Linux raw syscalls */
+/* pk_crypt.c — Cryptographic primitives for Linux raw syscalls */
 
 crypt_RandomResult pk_crypt_random(pk_slice_u8 buf) {
 	crypt_RandomResult r;

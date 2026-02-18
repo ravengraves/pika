@@ -1,5 +1,7 @@
 // Final benchmark for pika2c generated math library
-#define _POSIX_C_SOURCE 199309L
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +21,10 @@ static double now_sec(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
+
+static float rand01f(void) {
+	return (float)((double)rand() / (double)RAND_MAX);
 }
 
 #define BENCH1(name, libm_fn, pika_fn) \
@@ -139,12 +145,12 @@ int main(void) {
 	double l, p, s;
 	
 	// recip
-	for(int i=0; i<N; i++) input[i] = 0.1f + 10.0f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = 0.1f + 10.0f * rand01f();
 	l = run1(bench_libm_recip)*1e6; p = run1(bench_pika_recip)*1e6; s = l/p;
 	printf("| recip    | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// rsqrt
-	for(int i=0; i<N; i++) input[i] = 0.01f + 100.0f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = 0.01f + 100.0f * rand01f();
 	l = run1(bench_libm_rsqrt)*1e6; p = run1(bench_pika_rsqrt)*1e6; s = l/p;
 	printf("| rsqrt    | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
@@ -153,22 +159,22 @@ int main(void) {
 	printf("| sqrt     | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// exp
-	for(int i=0; i<N; i++) input[i] = -10.0f + 20.0f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = -10.0f + 20.0f * rand01f();
 	l = run1(bench_libm_exp)*1e6; p = run1(bench_pika_exp)*1e6; s = l/p;
 	printf("| exp      | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// log
-	for(int i=0; i<N; i++) input[i] = 0.01f + 100.0f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = 0.01f + 100.0f * rand01f();
 	l = run1(bench_libm_log)*1e6; p = run1(bench_pika_log)*1e6; s = l/p;
 	printf("| log      | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// pow
-	for(int i=0; i<N; i++) { input[i] = 0.1f + 10.0f*((float)rand()/RAND_MAX); input2[i] = 0.5f + 2.0f*((float)rand()/RAND_MAX); }
+	for(int i=0; i<N; i++) { input[i] = 0.1f + 10.0f * rand01f(); input2[i] = 0.5f + 2.0f * rand01f(); }
 	l = run2(bench_libm_pow)*1e6; p = run2(bench_pika_pow)*1e6; s = l/p;
 	printf("| pow      | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// sin
-	for(int i=0; i<N; i++) input[i] = -10.0f + 20.0f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = -10.0f + 20.0f * rand01f();
 	l = run1(bench_libm_sin)*1e6; p = run1(bench_pika_sin)*1e6; s = l/p;
 	printf("| sin      | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
@@ -189,7 +195,7 @@ int main(void) {
 	printf("| atan     | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// asin
-	for(int i=0; i<N; i++) input[i] = -0.99f + 1.98f*((float)rand()/RAND_MAX);
+	for(int i=0; i<N; i++) input[i] = -0.99f + 1.98f * rand01f();
 	l = run1(bench_libm_asin)*1e6; p = run1(bench_pika_asin)*1e6; s = l/p;
 	printf("| asin     | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
@@ -198,7 +204,7 @@ int main(void) {
 	printf("| acos     | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	
 	// atan2
-	for(int i=0; i<N; i++) { input[i] = -10.0f + 20.0f*((float)rand()/RAND_MAX); input2[i] = -10.0f + 20.0f*((float)rand()/RAND_MAX); }
+	for(int i=0; i<N; i++) { input[i] = -10.0f + 20.0f * rand01f(); input2[i] = -10.0f + 20.0f * rand01f(); }
 	l = run2(bench_libm_atan2)*1e6; p = run2(bench_pika_atan2)*1e6; s = l/p;
 	printf("| atan2    | %9.0f | %9.0f | %6.2fx | %s |\n", l, p, s, s>=1.5?"🚀 FASTER":s>=1.1?"✓ faster":s>=0.9?"≈ same":"⚠ slower");
 	

@@ -1,4 +1,4 @@
-/* pk_shm.c — Named shared memory for aarch64 Linux raw syscalls */
+/* pk_shm.c — Named shared memory for Linux raw syscalls */
 
 #define PK_SHM_MAX 16
 

@@ -1,0 +1,95 @@
+use fb;
+use strings;
+
+export fn main() void = {
+	let storage: [256]u8 = [0...];
+	let b: fb::Buffer = fb::New(storage[0z..256z]);
+
+	// Write and ToStr
+	fb::Write(&b, "hello");
+	assert(fb::ToStr(&b) == "hello");
+
+	// Append more
+	fb::Write(&b, " world");
+	assert(fb::ToStr(&b) == "hello world");
+
+	// Clear
+	fb::Clear(&b);
+	assert(fb::ToStr(&b) == "");
+
+	// Wbool
+	fb::Wbool(&b, true);
+	assert(fb::ToStr(&b) == "true");
+	fb::Clear(&b);
+	fb::Wbool(&b, false);
+	assert(fb::ToStr(&b) == "false");
+
+	// Wi64 decimal (default mode/pad)
+	fb::Clear(&b);
+	fb::Wi64(&b, 42);
+	assert(fb::ToStr(&b) == "42");
+
+	// Wi64 negative
+	fb::Clear(&b);
+	fb::Wi64(&b, -123);
+	assert(fb::ToStr(&b) == "-123");
+
+	// Wi64 zero
+	fb::Clear(&b);
+	fb::Wi64(&b, 0);
+	assert(fb::ToStr(&b) == "0");
+
+	// Wi64 hex
+	fb::Clear(&b);
+	fb::Wi64(&b, 255, "hex");
+	assert(fb::ToStr(&b) == "ff");
+
+	// Wi64 with padding
+	fb::Clear(&b);
+	fb::Wi64(&b, 42, "dec", 5);
+	assert(fb::ToStr(&b) == "00042");
+
+	// Wu64 (default mode/pad)
+	fb::Clear(&b);
+	fb::Wu64(&b, 12345u64);
+	assert(fb::ToStr(&b) == "12345");
+
+	// Wu64 hex
+	fb::Clear(&b);
+	fb::Wu64(&b, 255u64, "hex");
+	assert(fb::ToStr(&b) == "ff");
+
+	// Wf64 eng mode (default dec=10, mode="eng")
+	fb::Clear(&b);
+	fb::Wf64(&b, 3.5f64);
+	assert(fb::ToStr(&b) == "3.5");
+
+	// Wf64 zero with explicit dec
+	fb::Clear(&b);
+	fb::Wf64(&b, 0.0f64, 2, "dec");
+	assert(fb::ToStr(&b) == "0.00");
+
+	// Wf64 negative (default args)
+	fb::Clear(&b);
+	fb::Wf64(&b, -1.5f64);
+	assert(fb::ToStr(&b) == "-1.5");
+
+	// F format (default unused args)
+	fb::Clear(&b);
+	fb::F(&b, "hello %s!", "world");
+	assert(fb::ToStr(&b) == "hello world!");
+
+	// F multiple args
+	fb::Clear(&b);
+	fb::F(&b, "%s + %s = %s", "1", "2", "3");
+	assert(fb::ToStr(&b) == "1 + 2 = 3");
+
+	// F literal percent
+	fb::Clear(&b);
+	fb::F(&b, "100%%");
+	assert(fb::ToStr(&b) == "100%");
+
+	// Prints (just ensure it doesn't crash)
+	fb::Prints("stdlib/fb: ");
+	fb::Printsln("OK");
+};

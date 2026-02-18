@@ -405,17 +405,17 @@ To work with the raw bytes of a string, convert to `[]u8` with
 `strings::toutf8`. The conversion is a view - no allocation, no copy.
 To go back, use `strings::fromutf8_unsafe`.
 
-## Output with `fmt`
+## Output with `fb`
 
-The `fmt` module provides two levels of output. For simple cases, print a
+The `fb` module provides two levels of output. For simple cases, print a
 string directly:
 
 ```pika
-use fmt;
+use fb;
 
 export fn main() void = {
-	fmt::Prints("name: ");
-	fmt::Printsln("Pika");  // prints "Pika\n"
+	fb::Prints("name: ");
+	fb::Printsln("Pika");  // prints "Pika\n"
 };
 ```
 
@@ -423,26 +423,26 @@ For formatted output, you provide a `[]u8` buffer and build the output
 explicitly. Nothing is allocated - you control exactly where the bytes go:
 
 ```pika
-use fmt;
+use fb;
 
 export fn main() void = {
 	let storage: [256]u8 = [0...];
-	let b: fmt::Buffer = fmt::New(storage[0z..256z]);
+	let b: fb::Buffer = fb::New(storage[0z..256z]);
 
-	fmt::Write(&b, "count: ");
-	fmt::Wi64(&b, 42);
-	fmt::Write(&b, ", pi: ");
-	fmt::Wf64(&b, 3.14159f64, 4);
-	fmt::Println(&b);  // flushes buffer to stdout + newline
+	fb::Write(&b, "count: ");
+	fb::Wi64(&b, 42);
+	fb::Write(&b, ", pi: ");
+	fb::Wf64(&b, 3.14159f64, 4);
+	fb::Println(&b);  // flushes buffer to stdout + newline
 
 	// F() does %-substitution (up to 5 args)
-	fmt::Clear(&b);
-	fmt::F(&b, "%s + %s = %s", "1", "2", "3");
-	fmt::Println(&b);  // prints "1 + 2 = 3\n"
+	fb::Clear(&b);
+	fb::F(&b, "%s + %s = %s", "1", "2", "3");
+	fb::Println(&b);  // prints "1 + 2 = 3\n"
 };
 ```
 
-`fmt::Buffer` is a struct holding a `[]u8` slice and a write index. Functions
+`fb::Buffer` is a struct holding a `[]u8` slice and a write index. Functions
 like `Wi64`, `Wu64`, `Wf64`, and `Wbool` format values into the buffer.
 `Print` writes the buffer contents to stdout; `Println` adds a newline.
 `Clear` resets the index to zero so you can reuse the same buffer.

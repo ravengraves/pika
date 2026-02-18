@@ -38,15 +38,6 @@ static int32_t pk_do_stat(pk_str path, struct pk_linux_stat* st, int32_t flags) 
 	return (int32_t)pk_syscall4(__PK_SYS_fstatat, PK_AT_FDCWD, (int64_t)cbuf, (int64_t)st, flags);
 }
 
-static int pk_dir_cache_match(pk_str path) {
-	if (pk__dir_last_name_len == 0) return 0;
-	if (path.len != pk__dir_last_name_len) return 0;
-	for (size_t i = 0; i < path.len; i++) {
-		if (path.data[i] != (uint8_t)pk__dir_last_name[i]) return 0;
-	}
-	return 1;
-}
-
 /* ========================================================================
  * Core I/O
  * ======================================================================== */
@@ -157,24 +148,24 @@ _Bool pk_file_exists(pk_str path) {
 }
 
 _Bool pk_file_is_dir(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_DT_DIR) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_DT_DIR) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
 	struct pk_linux_stat st;
 	if (pk_do_stat(path, &st, 0) < 0) return 0;
 	return (st.st_mode & PK_S_IFMT) == PK_S_IFDIR;
 }
 
 _Bool pk_file_is_file(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_DT_REG) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_DT_REG) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
 	struct pk_linux_stat st;
 	if (pk_do_stat(path, &st, 0) < 0) return 0;
 	return (st.st_mode & PK_S_IFMT) == PK_S_IFREG;
 }
 
 _Bool pk_file_is_link(pk_str path) {
-	if (pk_dir_cache_match(path) && pk__dir_last_type == PK_DT_LNK) return 1;
-	if (pk_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type == PK_DT_LNK) return 1;
+	if (pk_file_dir_cache_match(path) && pk__dir_last_type != PK_DT_UNKNOWN) return 0;
 	struct pk_linux_stat st;
 	if (pk_do_stat(path, &st, PK_AT_SYMLINK_NOFOLLOW) < 0) return 0;
 	return (st.st_mode & PK_S_IFMT) == PK_S_IFLNK;
@@ -271,29 +262,8 @@ file_DirEntry pk_file_dirnext(int64_t handle, pk_slice_u8 buf) {
 		char* d_name = (char*)(ent + PK_DIRENT64_NAME_OFF);
 		ds->pos += reclen;
 
-		/* Skip . and .. */
-		if (d_name[0] == '.') {
-			if (d_name[1] == '\0') continue;
-			if (d_name[1] == '.' && d_name[2] == '\0') continue;
-		}
-
-		size_t namelen = 0;
-		while (d_name[namelen] != '\0') namelen++;
-
-		size_t copylen = namelen < buf.len ? namelen : buf.len;
-		for (size_t i = 0; i < copylen; i++) buf.data[i] = (uint8_t)d_name[i];
-
-		/* Update dir cache */
-		size_t cachelen = namelen < sizeof(pk__dir_last_name) - 1 ? namelen : sizeof(pk__dir_last_name) - 1;
-		for (size_t i = 0; i < cachelen; i++) pk__dir_last_name[i] = d_name[i];
-		pk__dir_last_name[cachelen] = '\0';
-		pk__dir_last_name_len = cachelen;
-		pk__dir_last_type = d_type;
-
-		r.tag = 0;
-		r.val._0.data = buf.data;
-		r.val._0.len = copylen;
-		return r;
+		if (pk_file_is_dot_or_dotdot(d_name)) continue;
+		return pk_file_make_dir_entry(buf, d_name, d_type);
 	}
 }
 

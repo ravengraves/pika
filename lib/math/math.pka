@@ -1,5 +1,8 @@
 // optimized constants determined using evolutionary search
 
+// C-backed bit population count (number of set bits in a 64-bit value).
+export @symbol("pk_math_popcount") fn popcount(x: u64) i32;
+
 // --- tiny helpers ---
 
 // Absolute value

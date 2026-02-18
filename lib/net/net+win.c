@@ -142,22 +142,7 @@ net_RecvResult pk_net_recv_udp(int32_t fd, pk_slice_u8 buf, pk_slice_u8 addr_buf
 		(struct sockaddr*)&sa, &salen);
 	if (ret == SOCKET_ERROR) { r.tag = 1; r.val._1 = 0; return r; }
 
-	/* Format sender address into addr_buf as dotted decimal */
-	if (addr_buf.data && addr_buf.len > 0) {
-		uint32_t ip = pk_htonl(sa.sin_addr.s_addr);
-		uint8_t a = (uint8_t)(ip >> 24), b = (uint8_t)(ip >> 16);
-		uint8_t c = (uint8_t)(ip >> 8), d = (uint8_t)(ip);
-		size_t pos = 0;
-		uint8_t parts[4] = {a, b, c, d};
-		for (int p = 0; p < 4 && pos < addr_buf.len; p++) {
-			if (p > 0 && pos < addr_buf.len) addr_buf.data[pos++] = '.';
-			uint8_t v = parts[p];
-			if (v >= 100 && pos < addr_buf.len) { addr_buf.data[pos++] = (uint8_t)('0' + v / 100); v %= 100; }
-			if ((parts[p] >= 10) && pos < addr_buf.len) { addr_buf.data[pos++] = (uint8_t)('0' + v / 10); v %= 10; }
-			if (pos < addr_buf.len) addr_buf.data[pos++] = (uint8_t)('0' + v);
-		}
-		if (pos < addr_buf.len) addr_buf.data[pos] = 0;
-	}
+	pk_net_format_ipv4(addr_buf, sa.sin_addr.s_addr);
 	if (port_out) *port_out = pk_htons(sa.sin_port);
 
 	r.tag = 0; r.val._0 = (int64_t)ret;

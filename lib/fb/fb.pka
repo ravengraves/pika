@@ -1,6 +1,6 @@
 use strings;
 
-// fmt — Formatted output
+// fb — Formatted output
 // Buffer-based formatting. User provides []u8 storage.
 // Print/Println/EPrint/Prints/Printsln are C-backed (platform-specific).
 // All other functions are pure Pika.
@@ -10,11 +10,11 @@ export type Buffer = struct {
     index: size,
 };
 
-export @symbol("pk_fmt_print")    fn Print(b: *Buffer) void;
-export @symbol("pk_fmt_println")  fn Println(b: *Buffer) void;
-export @symbol("pk_fmt_eprint")   fn EPrint(b: *Buffer) void;
-export @symbol("pk_fmt_prints")   fn Prints(s: str) void;
-export @symbol("pk_fmt_printsln") fn Printsln(s: str) void;
+export @symbol("pk_fb_print")    fn Print(b: *Buffer) void;
+export @symbol("pk_fb_println")  fn Println(b: *Buffer) void;
+export @symbol("pk_fb_eprint")   fn EPrint(b: *Buffer) void;
+export @symbol("pk_fb_prints")   fn Prints(s: str) void;
+export @symbol("pk_fb_printsln") fn Printsln(s: str) void;
 
 export fn New(buf: []u8) Buffer = {
     return Buffer { buf = buf, index = 0z };

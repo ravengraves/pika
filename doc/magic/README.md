@@ -94,3 +94,6 @@ gcc -D_GNU_SOURCE -std=c11 -Wall -Wextra -O3 -fno-strict-aliasing \
 | asin     |       381 |       314 |   1.21x | ✓ faster |
 | acos     |       429 |       331 |   1.30x | ✓ faster |
 | atan2    |       522 |       416 |   1.25x | ✓ faster |
+
+
+>
