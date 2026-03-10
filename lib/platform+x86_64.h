@@ -111,6 +111,7 @@ typedef struct { pk_str* data; size_t len; size_t cap; } pk_slice_str;
 #define __PK_SYS_exit            60
 #define __PK_SYS_wait4           61
 #define __PK_SYS_kill            62
+#define __PK_SYS_dup3            292
 #define __PK_SYS_chdir           80
 #define __PK_SYS_rename          82
 #define __PK_SYS_mkdir           83

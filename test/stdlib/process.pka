@@ -1,4 +1,5 @@
 use proc;
+use file;
 
 export fn main() void = {
 	// GetPid
@@ -14,6 +15,38 @@ export fn main() void = {
 	assert(child > 0);
 	let status = proc::Wait(child, -1);
 	assert(status == 0);
+
+	if (file::Exists("/bin/echo") && file::Exists("/bin/sh")) {
+		let out_path = "build/test/stdlib/proc_redirect_out.txt";
+		let err_path = "build/test/stdlib/proc_redirect_err.txt";
+		let both_path = "build/test/stdlib/proc_redirect_both.txt";
+		let d = file::Del(out_path); match (d) { case file::FileOk => void; case file::FileError => void; };
+		d = file::Del(err_path); match (d) { case file::FileOk => void; case file::FileError => void; };
+		d = file::Del(both_path); match (d) { case file::FileOk => void; case file::FileError => void; };
+
+		let echo_argv: [2]str = ["hello", "world"];
+		let p1 = proc::MustCreateRedirect("/bin/echo", echo_argv[0z..2z], "", out_path, false, "", false);
+		assert(proc::Wait(p1, -1) == 0);
+		let s1 = file::Size(out_path);
+		assert(s1 > 0);
+
+		let echo2_argv: [1]str = ["again"];
+		let p2 = proc::MustCreateRedirect("/bin/echo", echo2_argv[0z..1z], "", out_path, true, "", false);
+		assert(proc::Wait(p2, -1) == 0);
+		let s2 = file::Size(out_path);
+		assert(s2 > s1);
+
+		let sh_err_argv: [2]str = ["-c", "echo errline 1>&2"];
+		let p3 = proc::MustCreateRedirect("/bin/sh", sh_err_argv[0z..2z], "", "", false, err_path, false);
+		assert(proc::Wait(p3, -1) == 0);
+		assert(file::Size(err_path) > 0);
+
+		let sh_both_argv: [2]str = ["-c", "echo outline; echo errline 1>&2"];
+		let p4 = proc::MustCreateRedirect("/bin/sh", sh_both_argv[0z..2z],
+			"", both_path, false, both_path, false);
+		assert(proc::Wait(p4, -1) == 0);
+		assert(file::Size(both_path) > 0);
+	};
 
 	// Priority
 	let min_p = proc::MinPriority();

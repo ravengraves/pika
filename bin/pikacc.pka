@@ -1,0 +1,862 @@
+use args;
+use file;
+use path;
+use strings;
+use fb;
+use proc;
+use clock;
+
+type StrList = struct {
+	data: *[*]str,
+	cap: i32,
+	len: i32,
+};
+
+type Pool = struct {
+	data: *[*]u8,
+	cap: size,
+	used: size,
+};
+
+let g_include_arr: [64]str = [""...];
+let g_exclude_arr: [64]str = [""...];
+let g_pka_arr: [2048]str = [""...];
+let g_c_arr: [4096]str = [""...];
+let g_o_arr: [1024]str = [""...];
+let g_mod_root_arr: [128]str = [""...];
+let g_mod_pka_arr: [4096]str = [""...];
+let g_mod_ns_arr: [4096]str = [""...];
+let g_lib_c_common_arr: [4096]str = [""...];
+let g_lib_c_tag_arr: [4096]str = [""...];
+let g_lib_h_arr: [256]str = [""...];
+let g_cc_argv_arr: [256]str = [""...];
+let g_pool_buf: [2097152]u8 = [0...];
+
+fn die(msg: str) void = {
+	fb::Prints("pikacc: ");
+	fb::Prints(msg);
+	fb::Prints("\n");
+	proc::Exit(1);
+};
+
+fn usage() void = {
+	fb::Prints("Usage: pikacc <pka files...> [opts] -o <output>\n");
+	fb::Prints("Options:\n");
+	fb::Prints("  --platform x86_64_raw|aarch64_raw|libc|win64\n");
+	fb::Prints("  -O0|-O1|-O2|-O3\n");
+	fb::Prints("  -M <module_root>   (recursive module discovery, default: lib)\n");
+	fb::Prints("  -T +tag            include files/folders containing +tag\n");
+	fb::Prints("  -T -tag            exclude files/folders containing +tag\n");
+};
+
+fn push(list: *StrList, s: str) void = {
+	if (list.len >= list.cap) {
+		die("too many entries");
+	};
+	list.data[list.len: size] = s;
+	list.len = list.len + 1;
+};
+
+fn streq(a: str, b: str) bool = {
+	return a == b;
+};
+
+fn ends_with(s: str, suffix: str) bool = {
+	let a = strings::toutf8(s);
+	let b = strings::toutf8(suffix);
+	if (b.len > a.len) {
+		return false;
+	};
+	let off: size = a.len - b.len;
+	let i: size = 0z;
+	for (i < b.len) {
+		if (a[off + i] != b[i]) {
+			return false;
+		};
+		i = i + 1z;
+	};
+	return true;
+};
+
+fn starts_with(s: str, prefix: str) bool = {
+	let a = strings::toutf8(s);
+	let b = strings::toutf8(prefix);
+	if (b.len > a.len) {
+		return false;
+	};
+	let i: size = 0z;
+	for (i < b.len) {
+		if (a[i] != b[i]) {
+			return false;
+		};
+		i = i + 1z;
+	};
+	return true;
+};
+
+fn is_dot(name: str) bool = {
+	return streq(name, ".") || streq(name, "..");
+};
+
+fn cstr_len(buf: []u8) size = {
+	let i: size = 0z;
+	for (i < buf.len) {
+		if (buf[i] == 0) {
+			return i;
+		};
+		i = i + 1z;
+	};
+	return buf.len;
+};
+
+fn pool_store(pool: *Pool, s: str) str = {
+	let d = strings::toutf8(s);
+	if ((pool.used + d.len) > pool.cap) {
+		die("string pool full");
+	};
+	let start = pool.used;
+	let i: size = 0z;
+	for (i < d.len) {
+		pool.data[start + i] = d[i];
+		i = i + 1z;
+	};
+	pool.used = pool.used + d.len;
+	return strings::fromutf8_unsafe(pool.data[start..pool.used]);
+};
+
+fn join_path(buf: []u8, a: str, b: str) str = {
+	let ad = strings::toutf8(a);
+	let bd = strings::toutf8(b);
+	let n: size = 0z;
+	let i: size = 0z;
+	for (i < ad.len && n < buf.len) {
+		buf[n] = ad[i];
+		n = n + 1z;
+		i = i + 1z;
+	};
+	if (n > 0z && n < buf.len && buf[n - 1z] != '/') {
+		buf[n] = '/';
+		n = n + 1z;
+	};
+	i = 0z;
+	for (i < bd.len && n < buf.len) {
+		buf[n] = bd[i];
+		n = n + 1z;
+		i = i + 1z;
+	};
+	return strings::fromutf8_unsafe(buf[0z..n]);
+};
+
+fn has_any_plus_tag(s: str) bool = {
+	let d = strings::toutf8(s);
+	let i: size = 0z;
+	for (i < d.len) {
+		if (d[i] == '+') {
+			return true;
+		};
+		i = i + 1z;
+	};
+	return false;
+};
+
+fn has_tag(s: str, tag: str) bool = {
+	let d = strings::toutf8(s);
+	let t = strings::toutf8(tag);
+	if (t.len == 0z) {
+		return false;
+	};
+	let i: size = 0z;
+	for (i < d.len) {
+		if (d[i] == '+') {
+			if ((i + 1z + t.len) <= d.len) {
+				let ok = true;
+				let j: size = 0z;
+				for (j < t.len) {
+					if (d[i + 1z + j] != t[j]) {
+						ok = false;
+						break;
+					};
+					j = j + 1z;
+				};
+				if (ok) {
+					let end = i + 1z + t.len;
+					if (end == d.len) {
+						return true;
+					};
+					let c = d[end];
+					if (c == '.' || c == '/' || c == '+') {
+						return true;
+					};
+				};
+			};
+		};
+		i = i + 1z;
+	};
+	return false;
+};
+
+fn match_any_tag(s: str, tags: *StrList) bool = {
+	let i: i32 = 0;
+	for (i < tags.len) {
+		if (has_tag(s, tags.data[i: size])) {
+			return true;
+		};
+		i = i + 1;
+	};
+	return false;
+};
+
+fn should_include(s: str, include_tags: *StrList, exclude_tags: *StrList) bool = {
+	if (match_any_tag(s, exclude_tags)) {
+		return false;
+	};
+	if (has_any_plus_tag(s)) {
+		return match_any_tag(s, include_tags);
+	};
+	return true;
+};
+
+fn str_less(a: str, b: str) bool = {
+	let ad = strings::toutf8(a);
+	let bd = strings::toutf8(b);
+	let i: size = 0z;
+	let n: size = ad.len;
+	if (bd.len < n) {
+		n = bd.len;
+	};
+	for (i < n) {
+		if (ad[i] < bd[i]) {
+			return true;
+		};
+		if (ad[i] > bd[i]) {
+			return false;
+		};
+		i = i + 1z;
+	};
+	return ad.len < bd.len;
+};
+
+fn sort_list(list: *StrList) void = {
+	let i: i32 = 1;
+	for (i < list.len) {
+		let j: i32 = i;
+		for (j > 0 && str_less(list.data[j: size], list.data[(j - 1): size])) {
+			let t = list.data[j: size];
+			list.data[j: size] = list.data[(j - 1): size];
+			list.data[(j - 1): size] = t;
+			j = j - 1;
+		};
+		i = i + 1;
+	};
+};
+
+fn sort_modules(paths: *StrList, names: *StrList) void = {
+	let i: i32 = 1;
+	for (i < paths.len) {
+		let j: i32 = i;
+		for (j > 0 && str_less(paths.data[j: size], paths.data[(j - 1): size])) {
+			let tp = paths.data[j: size];
+			paths.data[j: size] = paths.data[(j - 1): size];
+			paths.data[(j - 1): size] = tp;
+			let tn = names.data[j: size];
+			names.data[j: size] = names.data[(j - 1): size];
+			names.data[(j - 1): size] = tn;
+			j = j - 1;
+		};
+		i = i + 1;
+	};
+};
+
+fn namespace_for(pool: *Pool, full: str, root: str) str = {
+	let fd = strings::toutf8(full);
+	let rd = strings::toutf8(root);
+	let start: size = 0z;
+	if (fd.len >= rd.len) {
+		let ok = true;
+		let i: size = 0z;
+		for (i < rd.len) {
+			if (fd[i] != rd[i]) {
+				ok = false;
+				break;
+			};
+			i = i + 1z;
+		};
+		if (ok) {
+			start = rd.len;
+			if (start < fd.len && fd[start] == '/') {
+				start = start + 1z;
+			};
+		};
+	};
+	let rel = strings::fromutf8_unsafe(fd[start..fd.len]);
+	let dir = path::DirName(rel);
+	let base = path::BaseName(rel);
+	let bd = strings::toutf8(base);
+	let btrim = bd;
+	if (ends_with(base, ".pka") && bd.len >= 4z) {
+		btrim = bd[0z..(bd.len - 4z)];
+	};
+	let bname = strings::fromutf8_unsafe(btrim);
+	if (streq(dir, "")) {
+		return pool_store(pool, bname);
+	};
+
+	let dd = strings::toutf8(dir);
+	let tmp: [512]u8 = [0...];
+	let n: size = 0z;
+	let k: size = 0z;
+	for (k < dd.len && n < len(tmp)) {
+		if (dd[k] == '/') {
+			tmp[n] = '_';
+		} else {
+			tmp[n] = dd[k];
+		};
+		n = n + 1z;
+		k = k + 1z;
+	};
+
+	let last = path::BaseName(dir);
+	if (!streq(last, bname) && n < len(tmp)) {
+		tmp[n] = '_';
+		n = n + 1z;
+		let bn = strings::toutf8(bname);
+		k = 0z;
+		for (k < bn.len && n < len(tmp)) {
+			tmp[n] = bn[k];
+			n = n + 1z;
+			k = k + 1z;
+		};
+	};
+
+	return pool_store(pool, strings::fromutf8_unsafe(tmp[0z..n]));
+};
+
+fn discover(root: str, dir: str,
+	pool: *Pool,
+	include_tags: *StrList,
+	exclude_tags: *StrList,
+	mod_paths: *StrList,
+	mod_names: *StrList,
+	c_common: *StrList,
+	c_tagged: *StrList,
+	h_files: *StrList) void = {
+	if (!file::IsDir(root)) {
+		return;
+	};
+	let stack: [4096]str = [""...];
+	let sp: i32 = 0;
+	stack[0z] = dir;
+	sp = 1;
+	for (sp > 0) {
+		sp = sp - 1;
+		let cur = stack[sp: size];
+		let h = file::MustOpenDir(cur);
+		let ebuf: [512]u8 = [0...];
+		for (true) {
+			let z: size = 0z;
+			for (z < 512z) {
+				ebuf[z] = 0;
+				z = z + 1z;
+			};
+			let e = file::DirNext(h, ebuf[0z..512z]);
+			if (file::IsDirDone(e)) {
+				break;
+			};
+			let nlen = cstr_len(ebuf[0z..512z]);
+			let name = strings::fromutf8_unsafe(ebuf[0z..nlen]);
+			if (is_dot(name)) {
+				continue;
+			};
+			let pbuf: [1024]u8 = [0...];
+			let full = join_path(pbuf[0z..1024z], cur, name);
+			if (!should_include(full, include_tags, exclude_tags)) {
+				continue;
+			};
+			if (file::IsDir(full)) {
+				if (sp >= (len(stack): i32)) {
+					die("directory stack full");
+				};
+				stack[sp: size] = pool_store(pool, full);
+				sp = sp + 1;
+				continue;
+			};
+			if (ends_with(full, ".pka")) {
+				let mod_path = pool_store(pool, full);
+				let ns = namespace_for(pool, full, root);
+				push(mod_paths, mod_path);
+				push(mod_names, ns);
+				continue;
+			};
+			if (ends_with(full, ".c")) {
+				if (has_any_plus_tag(full)) {
+					push(c_tagged, pool_store(pool, full));
+				} else {
+					push(c_common, pool_store(pool, full));
+				};
+				continue;
+			};
+			if (ends_with(full, ".h") && starts_with(path::BaseName(full), "platform+")) {
+				push(h_files, pool_store(pool, full));
+				continue;
+			};
+		};
+		file::CloseDir(h);
+	};
+};
+
+fn write_str(fd: i32, s: str) void = {
+	let d = strings::toutf8(s);
+	if (d.len > 0z) {
+		let n = file::MustWrite(fd, d);
+		if (n != d.len: i64) {
+			die("short write");
+		};
+	};
+};
+
+fn writeln(fd: i32, s: str) void = {
+	write_str(fd, s);
+	write_str(fd, "\n");
+};
+
+fn make_tmp(pool: *Pool, root: str, name: str, suffix: str) str = {
+	let bbuf: [128]u8 = [0...];
+	let b = fb::New(bbuf[0z..128z]);
+	fb::Write(&b, root);
+	fb::Write(&b, "/pikacc-");
+	fb::Wi64(&b, proc::GetPid(): i64);
+	fb::Write(&b, "-");
+	fb::Write(&b, name);
+	fb::Write(&b, suffix);
+	return pool_store(pool, fb::ToStr(&b));
+};
+
+fn maybe_del(path: str) void = {
+	let r = file::Del(path);
+	match (r) {
+	case file::FileOk => void;
+	case file::FileError => void;
+	};
+};
+
+fn ensure_dir(path: str) void = {
+	if (file::IsDir(path)) {
+		return;
+	};
+	if (file::Exists(path)) {
+		die("path exists and is not a directory");
+	};
+	let r = file::Mkdir(path);
+	match (r) {
+	case file::FileOk => void;
+	case file::FileError => {
+		if (!file::IsDir(path)) {
+			die("failed to create directory");
+		};
+	};
+	};
+};
+
+fn append_file_to_fd(dstfd: i32, src: str) void = {
+	let srcfd = file::MustOpen(src, "r");
+	let buf: [16384]u8 = [0...];
+	for (true) {
+		let n = file::MustRead(srcfd, buf[0z..16384z]);
+		if (n <= 0) {
+			break;
+		};
+		let want = n: size;
+		let wrote = file::MustWrite(dstfd, buf[0z..want]);
+		if (wrote != n) {
+			die("short write");
+		};
+	};
+	file::Close(srcfd);
+};
+
+fn run_pika2c(stdin_path: str, stdout_path: str, append_out: bool) i32 = {
+	let argv: [1]str = [""];
+	let pid = proc::MustCreateRedirect("./pika2c", argv[0z..0z],
+		stdin_path, stdout_path, append_out, "", false);
+	return proc::Wait(pid, -1);
+};
+
+fn run_cc(cc: str, argv: *StrList) i32 = {
+	let pid = proc::MustCreate(cc, argv.data[0z..(argv.len: size)]);
+	return proc::Wait(pid, -1);
+};
+
+fn add_platform_tags(platform: str, include_tags: *StrList) void = {
+	if (streq(platform, "x86_64_raw")) {
+		push(include_tags, "x86_64");
+		push(include_tags, "raw");
+	} else if (streq(platform, "aarch64_raw")) {
+		push(include_tags, "aarch64");
+		push(include_tags, "raw");
+	} else if (streq(platform, "libc")) {
+		push(include_tags, "libc");
+	} else if (streq(platform, "win64")) {
+		push(include_tags, "win");
+	};
+};
+
+export fn main() void = {
+	let output: str = "";
+	let platform: str = "x86_64_raw";
+	let optlevel: str = "3";
+
+	let include_tags = StrList {
+		data = &g_include_arr: *[*]str,
+		cap = 64,
+		len = 0,
+	};
+	let exclude_tags = StrList {
+		data = &g_exclude_arr: *[*]str,
+		cap = 64,
+		len = 0,
+	};
+	let pka_files = StrList {
+		data = &g_pka_arr: *[*]str,
+		cap = 2048,
+		len = 0,
+	};
+	let c_files = StrList {
+		data = &g_c_arr: *[*]str,
+		cap = 4096,
+		len = 0,
+	};
+	let o_files = StrList {
+		data = &g_o_arr: *[*]str,
+		cap = 1024,
+		len = 0,
+	};
+	let mod_roots = StrList {
+		data = &g_mod_root_arr: *[*]str,
+		cap = 128,
+		len = 0,
+	};
+	let mod_paths = StrList {
+		data = &g_mod_pka_arr: *[*]str,
+		cap = 4096,
+		len = 0,
+	};
+	let mod_names = StrList {
+		data = &g_mod_ns_arr: *[*]str,
+		cap = 4096,
+		len = 0,
+	};
+	let lib_c_common = StrList {
+		data = &g_lib_c_common_arr: *[*]str,
+		cap = 4096,
+		len = 0,
+	};
+	let lib_c_tagged = StrList {
+		data = &g_lib_c_tag_arr: *[*]str,
+		cap = 4096,
+		len = 0,
+	};
+	let lib_h_files = StrList {
+		data = &g_lib_h_arr: *[*]str,
+		cap = 256,
+		len = 0,
+	};
+	let cc_argv = StrList {
+		data = &g_cc_argv_arr: *[*]str,
+		cap = 256,
+		len = 0,
+	};
+	let pool = Pool {
+		data = &g_pool_buf: *[*]u8,
+		cap = 2097152z,
+		used = 0z,
+	};
+
+	push(&mod_roots, "lib");
+
+	let argc = args::Count();
+	let i: i32 = 1;
+	for (i < argc) {
+		let a = args::At(i);
+		if (streq(a, "-o")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			output = args::At(i);
+		} else if (streq(a, "--platform")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			platform = args::At(i);
+		} else if (starts_with(a, "-O") && (strings::toutf8(a).len == 3z)) {
+			let d = strings::toutf8(a);
+			let ch = d[2z];
+			if (ch == '0') { optlevel = "0"; }
+			else if (ch == '1') { optlevel = "1"; }
+			else if (ch == '2') { optlevel = "2"; }
+			else if (ch == '3') { optlevel = "3"; };
+		} else if (streq(a, "-M")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			push(&mod_roots, args::At(i));
+		} else if (streq(a, "-T")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			let t = args::At(i);
+			let tbytes = strings::toutf8(t);
+			if (tbytes.len < 2z) {
+				die("invalid -T token");
+			};
+			let tag = pool_store(&pool, strings::fromutf8_unsafe(tbytes[1z..tbytes.len]));
+			if (tbytes[0z] == '+') {
+				push(&include_tags, tag);
+			} else if (tbytes[0z] == '-') {
+				push(&exclude_tags, tag);
+			} else {
+				die("-T token must start with + or -");
+			};
+		} else if (ends_with(a, ".c")) {
+			push(&c_files, a);
+		} else if (ends_with(a, ".o") || ends_with(a, ".a")) {
+			push(&o_files, a);
+		} else {
+			push(&pka_files, a);
+		};
+		i = i + 1;
+	};
+
+	if (streq(output, "") || pka_files.len == 0) {
+		usage();
+		proc::Exit(1);
+	};
+
+	add_platform_tags(platform, &include_tags);
+
+	i = 0;
+	for (i < mod_roots.len) {
+		discover(mod_roots.data[i: size], mod_roots.data[i: size], &pool,
+			&include_tags, &exclude_tags, &mod_paths, &mod_names,
+			&lib_c_common, &lib_c_tagged, &lib_h_files);
+		i = i + 1;
+	};
+
+	sort_modules(&mod_paths, &mod_names);
+	sort_list(&lib_c_common);
+	sort_list(&lib_c_tagged);
+	sort_list(&lib_h_files);
+
+	let cc: str = "gcc";
+	if (streq(platform, "win64")) {
+		cc = "x86_64-w64-mingw32-gcc";
+	};
+
+	if (!streq(platform, "x86_64_raw") &&
+		!streq(platform, "aarch64_raw") &&
+		!streq(platform, "libc") &&
+		!streq(platform, "win64")) {
+		die("unknown platform");
+	};
+
+	let rt_file = "runtime/rt.c";
+	if (streq(platform, "libc")) {
+		rt_file = "runtime/rt_libc.c";
+	} else if (streq(platform, "win64")) {
+		rt_file = "runtime/rt_win64.c";
+	};
+
+	ensure_dir("build");
+	ensure_dir("build/tmp");
+
+	let tmp_root = pool_store(&pool, "build/tmp");
+	let tmp_c = make_tmp(&pool, tmp_root, "driver", ".c");
+	let tmp_h = make_tmp(&pool, tmp_root, "headers", ".pka");
+	let tmp_m = make_tmp(&pool, tmp_root, "module", ".pka");
+
+	let cfd = file::MustOpen(tmp_c, "w");
+	writeln(cfd, "#include <stddef.h>");
+	writeln(cfd, "extern int rt_memcmp(const void*, const void*, size_t);");
+
+	if (c_files.len > 0) {
+		i = 0;
+		for (i < c_files.len) {
+			append_file_to_fd(cfd, c_files.data[i: size]);
+			i = i + 1;
+		};
+	};
+	file::Close(cfd);
+
+	i = 0;
+	for (i < mod_paths.len) {
+		let mfd = file::MustOpen(tmp_m, "w");
+		write_str(mfd, "-N ");
+		writeln(mfd, mod_names.data[i: size]);
+		append_file_to_fd(mfd, mod_paths.data[i: size]);
+		file::Close(mfd);
+
+		let p2c_status = run_pika2c(tmp_m, tmp_c, true);
+		if (p2c_status != 0) {
+			maybe_del(tmp_m);
+			maybe_del(tmp_h);
+			maybe_del(tmp_c);
+			proc::Exit(p2c_status);
+		};
+		i = i + 1;
+	};
+
+	let hfd = file::MustOpen(tmp_h, "w");
+	file::Close(hfd);
+	i = 0;
+	for (i < mod_paths.len) {
+		let hmfd = file::MustOpen(tmp_m, "w");
+		writeln(hmfd, "-H");
+		write_str(hmfd, "-N ");
+		writeln(hmfd, mod_names.data[i: size]);
+		append_file_to_fd(hmfd, mod_paths.data[i: size]);
+		file::Close(hmfd);
+
+		let h_status = run_pika2c(tmp_m, tmp_h, true);
+		if (h_status != 0) {
+			maybe_del(tmp_m);
+			maybe_del(tmp_h);
+			maybe_del(tmp_c);
+			proc::Exit(h_status);
+		};
+		i = i + 1;
+	};
+
+	hfd = file::MustOpen(tmp_h, "a");
+	if (pka_files.len > 0) {
+		i = 0;
+		for (i < pka_files.len) {
+			append_file_to_fd(hfd, pka_files.data[i: size]);
+			i = i + 1;
+		};
+	};
+	file::Close(hfd);
+
+	let p2c_status2 = run_pika2c(tmp_h, tmp_c, true);
+	if (p2c_status2 != 0) {
+		maybe_del(tmp_m);
+		maybe_del(tmp_h);
+		maybe_del(tmp_c);
+		proc::Exit(p2c_status2);
+	};
+
+	let appendfd = file::MustOpen(tmp_c, "a");
+	if (lib_h_files.len > 0) {
+		i = 0;
+		for (i < lib_h_files.len) {
+			append_file_to_fd(appendfd, lib_h_files.data[i: size]);
+			i = i + 1;
+		};
+	};
+	if (lib_c_common.len > 0) {
+		i = 0;
+		for (i < lib_c_common.len) {
+			append_file_to_fd(appendfd, lib_c_common.data[i: size]);
+			i = i + 1;
+		};
+	};
+	if (lib_c_tagged.len > 0) {
+		i = 0;
+		for (i < lib_c_tagged.len) {
+			append_file_to_fd(appendfd, lib_c_tagged.data[i: size]);
+			i = i + 1;
+		};
+	};
+	append_file_to_fd(appendfd, rt_file);
+	file::Close(appendfd);
+
+	let optb: [16]u8 = [0...];
+	let optfmt = fb::New(optb[0z..16z]);
+	fb::Write(&optfmt, "-O");
+	fb::Write(&optfmt, optlevel);
+	let optflag = pool_store(&pool, fb::ToStr(&optfmt));
+
+	push(&cc_argv, "-std=c11");
+	push(&cc_argv, "-Wall");
+	push(&cc_argv, "-Wextra");
+	push(&cc_argv, "-Wconversion");
+	push(&cc_argv, "-Wfloat-conversion");
+	push(&cc_argv, "-Wno-overlength-strings");
+	push(&cc_argv, "-Wno-unused-function");
+	push(&cc_argv, "-Wno-unused-variable");
+	push(&cc_argv, "-ffunction-sections");
+	push(&cc_argv, "-fdata-sections");
+	push(&cc_argv, optflag);
+
+	if (streq(platform, "x86_64_raw")) {
+		push(&cc_argv, "-march=native");
+		push(&cc_argv, "-mtune=native");
+		push(&cc_argv, "-mshstk");
+		push(&cc_argv, "-fno-builtin");
+		push(&cc_argv, "-ffreestanding");
+		push(&cc_argv, "-nostdlib");
+		push(&cc_argv, "-fno-asynchronous-unwind-tables");
+		push(&cc_argv, "-fno-unwind-tables");
+		push(&cc_argv, "-fno-stack-protector");
+		push(&cc_argv, "-fno-ident");
+		push(&cc_argv, "-Wl,--gc-sections,--build-id=none,--strip-all");
+		push(&cc_argv, "-flto");
+		push(&cc_argv, "-static");
+		push(&cc_argv, "-s");
+	} else if (streq(platform, "aarch64_raw")) {
+		push(&cc_argv, "-fno-builtin");
+		push(&cc_argv, "-ffreestanding");
+		push(&cc_argv, "-nostdlib");
+		push(&cc_argv, "-fno-asynchronous-unwind-tables");
+		push(&cc_argv, "-fno-unwind-tables");
+		push(&cc_argv, "-fno-stack-protector");
+		push(&cc_argv, "-fno-ident");
+		push(&cc_argv, "-Wl,--gc-sections,--build-id=none,--strip-all");
+		push(&cc_argv, "-flto");
+		push(&cc_argv, "-static");
+		push(&cc_argv, "-s");
+	} else if (streq(platform, "libc")) {
+		push(&cc_argv, "-march=native");
+		push(&cc_argv, "-mtune=native");
+		push(&cc_argv, "-D_GNU_SOURCE");
+		push(&cc_argv, "-Wno-unused-result");
+		push(&cc_argv, "-Wl,--gc-sections");
+		push(&cc_argv, "-flto");
+		push(&cc_argv, "-s");
+	} else {
+		push(&cc_argv, "-Wno-unused-result");
+		push(&cc_argv, "-mconsole");
+		push(&cc_argv, "-Wl,--gc-sections");
+		push(&cc_argv, "-flto");
+		push(&cc_argv, "-s");
+	};
+
+	push(&cc_argv, "-o");
+	push(&cc_argv, output);
+	push(&cc_argv, tmp_c);
+	i = 0;
+	for (i < o_files.len) {
+		push(&cc_argv, o_files.data[i: size]);
+		i = i + 1;
+	};
+	if (streq(platform, "libc")) {
+		push(&cc_argv, "-lrt");
+	} else if (streq(platform, "win64")) {
+		push(&cc_argv, "-lws2_32");
+		push(&cc_argv, "-lbcrypt");
+	};
+
+	let start_ns = clock::TimeNS();
+	let status = run_cc(cc, &cc_argv);
+	maybe_del(tmp_m);
+	maybe_del(tmp_h);
+	maybe_del(tmp_c);
+	if (status != 0) {
+		proc::Exit(status);
+	};
+	let end_ns = clock::TimeNS();
+	let ms: i64 = (end_ns - start_ns) / 1000000;
+
+	fb::Prints("Built ");
+	fb::Prints(output);
+	fb::Prints("\n");
+	let outb: [32]u8 = [0...];
+	let ob = fb::New(outb[0z..32z]);
+	fb::Wi64(&ob, ms);
+	fb::Print(&ob);
+	fb::Prints(" ms\n");
+};

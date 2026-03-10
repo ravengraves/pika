@@ -90,6 +90,7 @@ typedef struct { pk_str* data; size_t len; size_t cap; } pk_slice_str;
 #define __PK_SYS_read            63
 #define __PK_SYS_write           64
 #define __PK_SYS_close           57
+#define __PK_SYS_dup3            24
 #define __PK_SYS_lseek           62
 #define __PK_SYS_mmap            222
 #define __PK_SYS_munmap          215

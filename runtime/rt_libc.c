@@ -15,6 +15,9 @@
 typedef struct { uint8_t* data; size_t len; } hare_str;
 #endif
 
+static int rt_argc = 0;
+static char** rt_argv = NULL;
+
 /* Error tag base for tagged unions */
 #define HARE_ERROR_TAG_BASE 0x80000000U
 
@@ -119,8 +122,24 @@ void rt_abort_fixed(hare_str* path, uint64_t line, uint64_t col, uint64_t i) {
 
 extern void _main(void);
 
+int32_t pk_args_count(void) {
+	return (int32_t)rt_argc;
+}
+
+hare_str pk_args_at(int32_t index) {
+	if (index < 0 || index >= (int32_t)rt_argc || rt_argv == NULL || rt_argv[index] == NULL) {
+		return (hare_str){0, 0};
+	}
+	const char* s = rt_argv[index];
+	size_t n = 0;
+	while (s[n] != '\0') n++;
+	return (hare_str){(uint8_t*)s, n};
+}
+
 __attribute__((used))
-int rt_start_c(void) {
+int rt_start_c(int argc, char** argv) {
+	rt_argc = argc;
+	rt_argv = argv;
 	/* Linux safety: kill this process if its parent exits. */
 #ifdef __linux__
 	prctl(PR_SET_PDEATHSIG, 15 /* SIGTERM */);
@@ -148,8 +167,8 @@ int rt_start_c(void) {
 	return 0;
 }
 
-int main(void) {
-	rt_start_c();
+int main(int argc, char** argv) {
+	rt_start_c(argc, argv);
 	return 0;
 }
 

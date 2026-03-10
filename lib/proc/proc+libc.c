@@ -1,4 +1,5 @@
 /* pk_proc.c — Process management using libc (POSIX) */
+extern char** environ;
 
 proc_CreateResult pk_proc_create(pk_str path, pk_slice_str argv) {
 	proc_CreateResult r;
@@ -18,8 +19,41 @@ proc_CreateResult pk_proc_create(pk_str path, pk_slice_str argv) {
 	}
 	c_argv[argc + 1] = (char*)0;
 
-	char* c_envp[1];
-	c_envp[0] = (char*)0;
+	pid_t pid = fork();
+	if (pid < 0) { r.tag = 1; r.val._1 = 0; return r; }
+
+	if (pid == 0) {
+#ifdef __linux__
+		prctl(PR_SET_PDEATHSIG, SIGTERM);
+#endif
+		execvp(path_buf, c_argv);
+		_exit(127);
+	}
+
+	r.tag = 0; r.val._0 = (int32_t)pid;
+	return r;
+}
+
+proc_CreateResult pk_proc_create_redirect(pk_str path, pk_slice_str argv,
+	pk_str stdin_path,
+	pk_str stdout_path, _Bool stdout_append,
+	pk_str stderr_path, _Bool stderr_append) {
+	proc_CreateResult r;
+	char path_buf[4096];
+	pk_str_to_cstr(path, path_buf, sizeof(path_buf));
+
+	size_t argc = argv.len;
+	if (argc > 64) argc = 64;
+
+	char* c_argv[66];
+	char arg_bufs[64][256];
+
+	c_argv[0] = path_buf;
+	for (size_t i = 0; i < argc; i++) {
+		pk_str_to_cstr(argv.data[i], arg_bufs[i], sizeof(arg_bufs[i]));
+		c_argv[i + 1] = arg_bufs[i];
+	}
+	c_argv[argc + 1] = (char*)0;
 
 	pid_t pid = fork();
 	if (pid < 0) { r.tag = 1; r.val._1 = 0; return r; }
@@ -28,7 +62,41 @@ proc_CreateResult pk_proc_create(pk_str path, pk_slice_str argv) {
 #ifdef __linux__
 		prctl(PR_SET_PDEATHSIG, SIGTERM);
 #endif
-		execve(path_buf, c_argv, c_envp);
+		int outfd = -1;
+		int errfd = -1;
+
+		if (stdin_path.len > 0) {
+			char in_path[4096];
+			pk_str_to_cstr(stdin_path, in_path, sizeof(in_path));
+			int fd = open(in_path, O_RDONLY);
+			if (fd < 0 || dup2(fd, STDIN_FILENO) < 0) _exit(127);
+			if (fd != STDIN_FILENO) close(fd);
+		}
+		if (stdout_path.len > 0) {
+			char out_path[4096];
+			int flags = O_WRONLY | O_CREAT | (stdout_append ? O_APPEND : O_TRUNC);
+			pk_str_to_cstr(stdout_path, out_path, sizeof(out_path));
+			outfd = open(out_path, flags, 0644);
+			if (outfd < 0 || dup2(outfd, STDOUT_FILENO) < 0) _exit(127);
+			if (outfd != STDOUT_FILENO) close(outfd);
+			outfd = -1;
+		}
+		if (stderr_path.len > 0) {
+			if (stdout_path.len > 0 && stdout_append == stderr_append &&
+				pk_str_eq(stdout_path, stderr_path)) {
+				if (dup2(STDOUT_FILENO, STDERR_FILENO) < 0) _exit(127);
+			} else {
+				char err_path[4096];
+				int flags = O_WRONLY | O_CREAT | (stderr_append ? O_APPEND : O_TRUNC);
+				pk_str_to_cstr(stderr_path, err_path, sizeof(err_path));
+				errfd = open(err_path, flags, 0644);
+				if (errfd < 0 || dup2(errfd, STDERR_FILENO) < 0) _exit(127);
+				if (errfd != STDERR_FILENO) close(errfd);
+				errfd = -1;
+			}
+		}
+
+		execvp(path_buf, c_argv);
 		_exit(127);
 	}
 

@@ -8,6 +8,9 @@
 typedef struct { uint8_t* data; size_t len; } hare_str;
 #endif
 
+static int rt_argc = 0;
+static char** rt_argv = NULL;
+
 /* Error tag base for tagged unions */
 #define HARE_ERROR_TAG_BASE 0x80000000U
 
@@ -559,9 +562,25 @@ void rt_abort_fixed(hare_str* path, uint64_t line, uint64_t col, uint64_t i) {
 // This is defined when the transpiler encounters "export fn main() void = {..."
 extern void _main(void);
 
+int32_t pk_args_count(void) {
+	return (int32_t)rt_argc;
+}
+
+hare_str pk_args_at(int32_t index) {
+	if (index < 0 || index >= (int32_t)rt_argc || rt_argv == NULL || rt_argv[index] == NULL) {
+		return (hare_str){0, 0};
+	}
+	const char* s = rt_argv[index];
+	size_t n = 0;
+	while (s[n] != '\0') n++;
+	return (hare_str){(uint8_t*)s, n};
+}
+
 // Freestanding: use this directly for embedded
 __attribute__((used))
-int rt_start_c(void) {
+int rt_start_c(int argc, char** argv) {
+	rt_argc = argc;
+	rt_argv = argv;
 	// Linux safety: kill this process if its parent exits.
 	rt_pdeathsig_init();
 	// Set FTZ+DAZ for -ffast-math performance.
@@ -588,8 +607,8 @@ int rt_start_c(void) {
 
 // Hosted: default C entrypoint (weak — overridable)
 __attribute__((weak))
-int main(void) {
-	rt_start_c();
+int main(int argc, char** argv) {
+	rt_start_c(argc, argv);
 	return 0;
 }
 
@@ -600,6 +619,8 @@ __attribute__((weak, naked, noreturn))
 void _start(void) {
 	__asm__ volatile (
 		"xorl %%ebp, %%ebp\n"      // Clear frame pointer (ABI requirement)
+		"movq (%%rsp), %%rdi\n"    // argc
+		"leaq 8(%%rsp), %%rsi\n"   // argv
 		"andq $-16, %%rsp\n"       // Align stack to 16 bytes
 		"call rt_start_c\n"
 		"movl %%eax, %%edi\n"      // Exit code from rt_start_c
@@ -615,6 +636,8 @@ void _start(void) {
 	__asm__ volatile (
 		"mov x29, #0\n"            // Clear frame pointer
 		"mov x30, #0\n"            // Clear link register
+		"ldr x0, [sp]\n"           // argc
+		"add x1, sp, #8\n"         // argv
 		"and sp, sp, #-16\n"       // Align stack to 16 bytes
 		"bl rt_start_c\n"
 		"mov x8, #93\n"            // SYS_exit
@@ -629,6 +652,7 @@ void _start(void) {
 		"li fp, 0\n"               // Clear frame pointer
 		"li ra, 0\n"               // Clear return address
 		"andi sp, sp, -16\n"       // Align stack to 16 bytes
+		// Linux riscv64 enters with a0=argc, a1=argv.
 		"call rt_start_c\n"
 		"li a7, 93\n"              // SYS_exit
 		"ecall\n"
@@ -638,7 +662,7 @@ void _start(void) {
 #else
 __attribute__((weak, noreturn))
 void _start(void) {
-	rt_start_c();
+	rt_start_c(0, (char**)0);
 	rt_exit(0);
 }
 #endif

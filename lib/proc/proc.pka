@@ -7,6 +7,11 @@ export type Status = (i32 | Alive);
 export type VoidResult = (Ok | Error);
 
 export @symbol("pk_proc_create")    fn Create(path: str, argv: []str) CreateResult;
+export @symbol("pk_proc_create_redirect")
+	fn CreateRedirect(path: str, argv: []str,
+		stdin_path: str,
+		stdout_path: str, stdout_append: bool,
+		stderr_path: str, stderr_append: bool) CreateResult;
 export @symbol("pk_proc_check")     fn Check(pid: i32) Status;
 export @symbol("pk_proc_wait")      fn Wait(pid: i32, timeout: i32) i32;
 export @symbol("pk_proc_kill")      fn Kill(pid: i32, hard: bool) VoidResult;
@@ -27,4 +32,18 @@ export fn MustCreate(path: str, argv: []str) i32 = {
     case Error => abort("proc::Create failed");
     };
     return pid;
+};
+
+export fn MustCreateRedirect(path: str, argv: []str,
+	stdin_path: str,
+	stdout_path: str, stdout_append: bool,
+	stderr_path: str, stderr_append: bool) i32 = {
+	let r = CreateRedirect(path, argv,
+		stdin_path, stdout_path, stdout_append, stderr_path, stderr_append);
+	let pid: i32 = -1;
+	match (r) {
+	case let v: i32 => pid = v;
+	case Error => abort("proc::CreateRedirect failed");
+	};
+	return pid;
 };

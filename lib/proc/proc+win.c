@@ -33,6 +33,15 @@ static size_t pk_build_cmdline(pk_str path, pk_slice_str argv, char* out, size_t
 	return pos;
 }
 
+static HANDLE pk_dup_inheritable(HANDLE h) {
+	HANDLE out = NULL;
+	if (!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(),
+		&out, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+		return INVALID_HANDLE_VALUE;
+	}
+	return out;
+}
+
 proc_CreateResult pk_proc_create(pk_str path, pk_slice_str argv) {
 	proc_CreateResult r;
 
@@ -80,6 +89,137 @@ proc_CreateResult pk_proc_create(pk_str path, pk_slice_str argv) {
 	pk_proc_table[slot].active = 1;
 
 	r.tag = 0; r.val._0 = (int32_t)pi.dwProcessId;
+	return r;
+}
+
+proc_CreateResult pk_proc_create_redirect(pk_str path, pk_slice_str argv,
+	pk_str stdin_path,
+	pk_str stdout_path, _Bool stdout_append,
+	pk_str stderr_path, _Bool stderr_append) {
+	proc_CreateResult r;
+
+	if (stdin_path.len == 0 && stdout_path.len == 0 && stderr_path.len == 0) {
+		return pk_proc_create(path, argv);
+	}
+
+	/* Find a free slot in the process table */
+	int slot = -1;
+	for (int i = 0; i < PK_MAX_PROCS; i++) {
+		if (!pk_proc_table[i].active) { slot = i; break; }
+	}
+	if (slot < 0) { r.tag = 1; r.val._1 = 0; return r; }
+
+	/* Ensure job object is ready */
+	pk__ensure_job_object();
+
+	/* Build command line */
+	char cmdline[32768];
+	pk_build_cmdline(path, argv, cmdline, sizeof(cmdline));
+
+	SECURITY_ATTRIBUTES sa;
+	sa.nLength = sizeof(sa);
+	sa.lpSecurityDescriptor = NULL;
+	sa.bInheritHandle = TRUE;
+
+	HANDLE hIn = INVALID_HANDLE_VALUE;
+	HANDLE hOut = INVALID_HANDLE_VALUE;
+	HANDLE hErr = INVALID_HANDLE_VALUE;
+	HANDLE close_list[3];
+	int close_len = 0;
+
+	if (stdin_path.len > 0) {
+		char in_path[4096];
+		pk_str_to_cstr(stdin_path, in_path, sizeof(in_path));
+		hIn = CreateFileA(in_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hIn == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; return r; }
+		close_list[close_len++] = hIn;
+	} else {
+		HANDLE src = GetStdHandle(STD_INPUT_HANDLE);
+		if (src == INVALID_HANDLE_VALUE || src == NULL) { r.tag = 1; r.val._1 = 0; return r; }
+		hIn = pk_dup_inheritable(src);
+		if (hIn == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; return r; }
+		close_list[close_len++] = hIn;
+	}
+
+	if (stdout_path.len > 0) {
+		char out_path[4096];
+		DWORD access = stdout_append ? FILE_APPEND_DATA : GENERIC_WRITE;
+		DWORD create_disp = stdout_append ? OPEN_ALWAYS : CREATE_ALWAYS;
+		pk_str_to_cstr(stdout_path, out_path, sizeof(out_path));
+		hOut = CreateFileA(out_path, access, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&sa, create_disp, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hOut == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		close_list[close_len++] = hOut;
+	} else {
+		HANDLE src = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (src == INVALID_HANDLE_VALUE || src == NULL) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		hOut = pk_dup_inheritable(src);
+		if (hOut == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		close_list[close_len++] = hOut;
+	}
+
+	if (stderr_path.len > 0 && stdout_path.len > 0 &&
+		stdout_append == stderr_append && pk_str_eq(stdout_path, stderr_path)) {
+		hErr = hOut;
+	} else if (stderr_path.len > 0) {
+		char err_path[4096];
+		DWORD access = stderr_append ? FILE_APPEND_DATA : GENERIC_WRITE;
+		DWORD create_disp = stderr_append ? OPEN_ALWAYS : CREATE_ALWAYS;
+		pk_str_to_cstr(stderr_path, err_path, sizeof(err_path));
+		hErr = CreateFileA(err_path, access, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&sa, create_disp, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hErr == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		close_list[close_len++] = hErr;
+	} else {
+		HANDLE src = GetStdHandle(STD_ERROR_HANDLE);
+		if (src == INVALID_HANDLE_VALUE || src == NULL) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		hErr = pk_dup_inheritable(src);
+		if (hErr == INVALID_HANDLE_VALUE) { r.tag = 1; r.val._1 = 0; goto cleanup; }
+		close_list[close_len++] = hErr;
+	}
+
+	STARTUPINFOA si;
+	PROCESS_INFORMATION pi;
+	for (size_t i = 0; i < sizeof(si); i++) ((uint8_t*)&si)[i] = 0;
+	for (size_t i = 0; i < sizeof(pi); i++) ((uint8_t*)&pi)[i] = 0;
+	si.cb = sizeof(si);
+	si.dwFlags = STARTF_USESTDHANDLES;
+	si.hStdInput = hIn;
+	si.hStdOutput = hOut;
+	si.hStdError = hErr;
+
+	/* CREATE_SUSPENDED so we can assign to job before it runs */
+	DWORD flags = CREATE_SUSPENDED;
+
+	BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, flags, NULL, NULL, &si, &pi);
+	if (!ok) {
+		r.tag = 1; r.val._1 = 0;
+		goto cleanup;
+	}
+
+	/* Assign child to the job object so it dies when we die */
+	if (pk__job_object) {
+		AssignProcessToJobObject(pk__job_object, pi.hProcess);
+	}
+
+	/* Resume the child */
+	ResumeThread(pi.hThread);
+	CloseHandle(pi.hThread);
+
+	/* Store handle in our table */
+	pk_proc_table[slot].hProcess = pi.hProcess;
+	pk_proc_table[slot].dwPid = pi.dwProcessId;
+	pk_proc_table[slot].active = 1;
+
+	r.tag = 0; r.val._0 = (int32_t)pi.dwProcessId;
+
+cleanup:
+	for (int i = 0; i < close_len; i++) {
+		if (close_list[i] != INVALID_HANDLE_VALUE && close_list[i] != NULL) {
+			CloseHandle(close_list[i]);
+		}
+	}
 	return r;
 }
 
