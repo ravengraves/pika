@@ -20,4 +20,8 @@ if [ "$needs_rebuild" -eq 1 ]; then
 	"$LEGACY_DRIVER" "$BOOTSTRAP_SRC" --platform libc -O1 -o "$BOOTSTRAP_BIN"
 fi
 
+if [ -n "${CFLAGS_EXTRA:-}" ] || [ -n "${LIBS:-}" ]; then
+	exec "$LEGACY_DRIVER" "$@"
+fi
+
 exec "$BOOTSTRAP_BIN" "$@"

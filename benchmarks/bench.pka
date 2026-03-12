@@ -78,6 +78,31 @@ fn bench_write_f64_right(v: f64, decimals: i32, width: i32) void = {
     fb::Print(&b);
 };
 
+// Write n space characters
+fn bench_write_spaces(n: i32) void = {
+    let storage: [64]u8 = [0...];
+    let b = fmt::New(storage[0z..64z]);
+    let count: i32 = n;
+    if (count > 64) { count = 64; };
+    for (let i: i32 = 0; i < count; i += 1) {
+        fmt::Write(&b, " ");
+    };
+    fmt::Print(&b);
+};
+
+// Write an f64 right-aligned in a field of given width
+fn bench_write_f64_right(v: f64, decimals: i32, width: i32) void = {
+    let storage: [64]u8 = [0...];
+    let b = fmt::New(storage[0z..64z]);
+    fmt::Wf64(&b, v, decimals, "dec");
+    let slen: i32 = b.index: i32;
+    let pad: i32 = width - slen;
+    if (pad > 0) {
+        bench_write_spaces(pad);
+    };
+    fmt::Print(&b);
+};
+
 // Get monotonic time in nanoseconds
 fn bench_time_ns() i64 = {
     return clock::TimeNS();

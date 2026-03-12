@@ -33,3 +33,11 @@ void pk_fb_printsln(pk_str s) {
 	}
 	pk_fb_write_fd(1, (const uint8_t*)"\n", 1);
 }
+
+/* Compatibility wrappers for legacy/generated call sites that still reference
+ * module-qualified fb_* symbols instead of the pk_fb_* C backing names. */
+void fb_Print(fb_Buffer* b) { pk_fb_print(b); }
+void fb_Println(fb_Buffer* b) { pk_fb_println(b); }
+void fb_EPrint(fb_Buffer* b) { pk_fb_eprint(b); }
+void fb_Prints(pk_str s) { pk_fb_prints(s); }
+void fb_Printsln(pk_str s) { pk_fb_printsln(s); }

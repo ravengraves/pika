@@ -11,6 +11,7 @@ for i in test/stdlib/*.pka; do
 	bin/pikacc "$i" -O1 -o "$out"
 	"$out"
 done
+<<<<<<< Updated upstream
 
 # Integration check for the pikacc pipeline itself.
 out1="build/test/stdlib/pikacc_pipeline_out"
@@ -22,4 +23,6 @@ bin/pikacc test/runtime.pka -O1 -o "$out2"
 [ -f "$out2" ]
 [ -d build/tmp ]
 
+=======
+>>>>>>> Stashed changes
 echo "Stdlib tests passed."

@@ -1,0 +1,7 @@
+use args;
+
+export fn main() void = {
+	assert(args::Count() >= 1);
+	assert(args::Has("--flag"));
+	assert(args::FirstPositional() == "value");
+};

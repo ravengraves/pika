@@ -64,14 +64,18 @@ case "$PLATFORM" in
   libc)
     CFLAGS="$CFLAGS_COMMON -march=native -mtune=native \
 -D_GNU_SOURCE -Wno-unused-result -Wl,--gc-sections -flto -s"
-    LIBS="-lrt" ;;
+    LIBS="${LIBS:-} -lrt" ;;
   win64)
     CFLAGS="$CFLAGS_COMMON \
 -Wno-unused-result -mconsole -Wl,--gc-sections -flto -s"
-    LIBS="-lws2_32 -lbcrypt" ;;
+    LIBS="${LIBS:-} -lws2_32 -lbcrypt" ;;
   *)
     echo "Unknown platform: $PLATFORM" >&2; exit 1 ;;
 esac
+
+if [ -n "${CFLAGS_EXTRA:-}" ]; then
+  CFLAGS="$CFLAGS $CFLAGS_EXTRA"
+fi
 
 # --- Runtime selection ---
 case "$PLATFORM" in

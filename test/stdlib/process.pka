@@ -17,9 +17,9 @@ export fn main() void = {
 	assert(status == 0);
 
 	if (file::Exists("/bin/echo") && file::Exists("/bin/sh")) {
-		let out_path = "build/test/stdlib/proc_redirect_out.txt";
-		let err_path = "build/test/stdlib/proc_redirect_err.txt";
-		let both_path = "build/test/stdlib/proc_redirect_both.txt";
+		let out_path = "/tmp/pika_proc_redirect_out.txt";
+		let err_path = "/tmp/pika_proc_redirect_err.txt";
+		let both_path = "/tmp/pika_proc_redirect_both.txt";
 		let d = file::Del(out_path); match (d) { case file::FileOk => void; case file::FileError => void; };
 		d = file::Del(err_path); match (d) { case file::FileOk => void; case file::FileError => void; };
 		d = file::Del(both_path); match (d) { case file::FileOk => void; case file::FileError => void; };

@@ -27,11 +27,10 @@ native binary.
 ```pika
 // hello.pka
 use rt;
-use strings;
 
 export fn main() void = {
-	let msg = "Hello, Pika! 🐇\n";
-	rt::write(1, strings::toutf8(msg): *[*]u8, len(msg));
+	let msg: [_]u8 = ['H', 'e', 'l', 'l', 'o', ',', ' ', 'P', 'i', 'k', 'a', '!', '\n'];
+	rt::write(1, &msg: *opaque, len(msg));
 };
 ```
 
@@ -79,10 +78,10 @@ Pika code, the execution cost of each line is obvious.
 
 Pika has four ways to name a value:
 
-- `def NAME: T = ...;` - compile-time constant (useful for sizes and flags)
-- `const name: T = ...;` - immutable binding (global or local)
-- `let name: T = ...;` - mutable binding (global or local)
-- `static let name: T = ...;` - function-local static storage (persists across calls)
+- `def NAME: T = ...;` — compile-time constant (useful for sizes and flags)
+- `const name: T = ...;` — immutable binding (global or local)
+- `let name: T = ...;` — mutable binding (global or local)
+- `static let name: T = ...;` — function-local static storage (persists across calls)
 
 Pika forbids variable shadowing: you can't reuse a name in an inner scope.
 
@@ -109,7 +108,11 @@ export fn main() void = {
 ```
 
 The no-shadowing rule means you never have to wonder "which `count` is this?"
+<<<<<<< Updated upstream
 - there is only one `count` in scope. For state, prefer plain locals first,
+=======
+— there is only one `count` in scope. For state, prefer plain locals first,
+>>>>>>> Stashed changes
 then `static let` for persistent function-local state, and globals only when
 the state is truly shared.
 
@@ -149,7 +152,11 @@ export fn main() void = {
 ```
 
 `size(T)` tells you how many bytes a type occupies. Casts are always written
+<<<<<<< Updated upstream
 with `:` so they stand out in code review - there are no implicit conversions.
+=======
+with `:` so they stand out in code review — there are no implicit conversions.
+>>>>>>> Stashed changes
 
 ## Functions
 
@@ -184,7 +191,11 @@ of several behaviors," model it with an enum and a `switch`.
 ## Control Flow
 
 Pika keeps control flow simple: `if`/`else`, `for` loops, `switch`, and `match`.
+<<<<<<< Updated upstream
 `if` is a statement, not an expression - assign in each branch when you need a
+=======
+`if` is a statement, not an expression — assign in each branch when you need a
+>>>>>>> Stashed changes
 value. `yield` is only used inside `match` expressions.
 
 ```pika
@@ -217,7 +228,11 @@ you read a `for` loop, you know exactly what it does.
 ## Arrays and Slices
 
 Arrays (`[N]T` and `[_]T`) are fixed-size values. Slices (`[]T`) are views into
+<<<<<<< Updated upstream
 arrays - a pointer plus a length. Indexing is bounds-checked at runtime:
+=======
+arrays — a pointer plus a length. Indexing is bounds-checked at runtime:
+>>>>>>> Stashed changes
 out-of-range access aborts.
 
 ```pika
@@ -241,7 +256,11 @@ export fn main() void = {
 };
 ```
 
+<<<<<<< Updated upstream
 Slices don't allocate and don't own memory - they point at an existing region.
+=======
+Slices don't allocate and don't own memory — they point at an existing region.
+>>>>>>> Stashed changes
 The standard pattern is: keep data in an array, take slices to pass into
 functions. No copies, no hidden allocations, and the bounds check catches
 off-by-one errors at the point of access.
@@ -275,12 +294,20 @@ export fn main() void = {
 
 You still opt into pointers explicitly, but field access doesn't become a sea
 of `*` and parentheses. The auto-deref is predictable: it only applies where
+<<<<<<< Updated upstream
 it's unambiguous - field access and indexing.
+=======
+it's unambiguous — field access and indexing.
+>>>>>>> Stashed changes
 
 ## Nullable Pointers and Narrowing with `match`
 
 Pointers are non-nullable by default. If a pointer may be absent, you must say
+<<<<<<< Updated upstream
 so with `nullable *T`. Nullable pointers cannot be dereferenced directly - you
+=======
+so with `nullable *T`. Nullable pointers cannot be dereferenced directly — you
+>>>>>>> Stashed changes
 narrow them via `match`:
 
 ```pika
@@ -308,7 +335,11 @@ not null" in a way the compiler enforces.
 ## Enums and `switch`
 
 Enums are declared with `enum { ... }` (optionally with an underlying integer
+<<<<<<< Updated upstream
 type, e.g. `enum u8 { ... }`). Use `switch` to branch on enum values - it must
+=======
+type, e.g. `enum u8 { ... }`). Use `switch` to branch on enum values — it must
+>>>>>>> Stashed changes
 be exhaustive unless you add `case =>` as a default.
 
 ```pika
@@ -402,6 +433,7 @@ export fn main() void = {
 ```
 
 To work with the raw bytes of a string, convert to `[]u8` with
+<<<<<<< Updated upstream
 `strings::toutf8`. The conversion is a view - no allocation, no copy.
 To go back, use `strings::fromutf8_unsafe`.
 
@@ -416,10 +448,27 @@ use fb;
 export fn main() void = {
 	fb::Prints("name: ");
 	fb::Printsln("Pika");  // prints "Pika\n"
+=======
+`strings::toutf8`. The conversion is a view — no allocation, no copy.
+To go back, use `strings::fromutf8_unsafe`.
+
+## Output with `fmt`
+
+The `fmt` module provides two levels of output. For simple cases, print a
+string directly:
+
+```pika
+use fmt;
+
+export fn main() void = {
+	fmt::Prints("name: ");
+	fmt::Printsln("Pika");  // prints "Pika\n"
+>>>>>>> Stashed changes
 };
 ```
 
 For formatted output, you provide a `[]u8` buffer and build the output
+<<<<<<< Updated upstream
 explicitly. Nothing is allocated - you control exactly where the bytes go:
 
 ```pika
@@ -443,6 +492,31 @@ export fn main() void = {
 ```
 
 `fb::Buffer` is a struct holding a `[]u8` slice and a write index. Functions
+=======
+explicitly. Nothing is allocated — you control exactly where the bytes go:
+
+```pika
+use fmt;
+
+export fn main() void = {
+	let storage: [256]u8 = [0...];
+	let b: fmt::Buffer = fmt::New(storage[0z..256z]);
+
+	fmt::Write(&b, "count: ");
+	fmt::Wi64(&b, 42);
+	fmt::Write(&b, ", pi: ");
+	fmt::Wf64(&b, 3.14159f64, 4);
+	fmt::Println(&b);  // flushes buffer to stdout + newline
+
+	// F() does %-substitution (up to 5 args)
+	fmt::Clear(&b);
+	fmt::F(&b, "%s + %s = %s", "1", "2", "3");
+	fmt::Println(&b);  // prints "1 + 2 = 3\n"
+};
+```
+
+`fmt::Buffer` is a struct holding a `[]u8` slice and a write index. Functions
+>>>>>>> Stashed changes
 like `Wi64`, `Wu64`, `Wf64`, and `Wbool` format values into the buffer.
 `Print` writes the buffer contents to stdout; `Println` adds a newline.
 `Clear` resets the index to zero so you can reuse the same buffer.
@@ -454,7 +528,11 @@ parsing at runtime.
 ## File I/O
 
 The `file` module wraps platform file operations. Functions return tagged unions
+<<<<<<< Updated upstream
 for error handling - use the `Must*` helpers to unwrap-or-abort:
+=======
+for error handling — use the `Must*` helpers to unwrap-or-abort:
+>>>>>>> Stashed changes
 
 ```pika
 use file;
