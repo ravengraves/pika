@@ -7,11 +7,16 @@ mkdir -p build/test/stdlib
 for i in test/stdlib/*.pka; do
 	base="${i%.*}"
 	out="build/$base"
+	name="${base##*/}"
 	echo "building $out ..."
 	bin/pikacc "$i" -O1 -o "$out"
-	"$out"
+	if [ "$name" = "args" ]; then
+		# This test validates flag and positional parsing, so it needs argv.
+		"$out" --flag value
+	else
+		"$out"
+	fi
 done
-<<<<<<< Updated upstream
 
 # Integration check for the pikacc pipeline itself.
 out1="build/test/stdlib/pikacc_pipeline_out"
@@ -23,6 +28,4 @@ bin/pikacc test/runtime.pka -O1 -o "$out2"
 [ -f "$out2" ]
 [ -d build/tmp ]
 
-=======
->>>>>>> Stashed changes
 echo "Stdlib tests passed."

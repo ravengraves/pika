@@ -476,7 +476,7 @@ fn append_file_to_fd(dstfd: i32, src: str) void = {
 
 fn run_pika2c(stdin_path: str, stdout_path: str, append_out: bool) i32 = {
 	let argv: [1]str = [""];
-	let pid = proc::MustCreateRedirect("./pika2c", argv[0z..0z],
+	let pid = proc::MustCreateRedirect("pika2c", argv[0z..0z],
 		stdin_path, stdout_path, append_out, "", false);
 	return proc::Wait(pid, -1);
 };

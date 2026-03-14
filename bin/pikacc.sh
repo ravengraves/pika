@@ -95,7 +95,7 @@ RT_FWD='#include <stddef.h>
 extern int rt_memcmp(const void*, const void*, size_t);
 '
 
-PIKA2C="./pika2c"
+PIKA2C="pika2c"
 
 # Map platform to target suffix
 case "$PLATFORM" in
