@@ -1,0 +1,30 @@
+use strings;
+
+export @symbol("pk_args_count") fn Count() i32;
+export @symbol("pk_args_at") fn At(index: i32) str;
+
+fn is_flag(arg: str) bool = {
+	let data = strings::toutf8(arg);
+	return data.len >= 1z && data[0z] == '-';
+};
+
+export fn Has(flag: str) bool = {
+	let argc = Count();
+	for (let i: i32 = 1; i < argc; i += 1) {
+		if (At(i) == flag) {
+			return true;
+		};
+	};
+	return false;
+};
+
+export fn FirstPositional() str = {
+	let argc = Count();
+	for (let i: i32 = 1; i < argc; i += 1) {
+		let arg = At(i);
+		if (!is_flag(arg)) {
+			return arg;
+		};
+	};
+	return "";
+};
