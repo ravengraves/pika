@@ -540,21 +540,21 @@ use strings;
 
 export fn main() void = {
 	// Write
-	let fd = file::MustOpen("/tmp/pika_demo.txt", "w");
+	let fd = file::OpenAssert("/tmp/pika_demo.txt", "w");
 	let msg = "hello from pika\n";
-	file::MustWrite(fd, strings::toutf8(msg));
+	file::WriteAssert(fd, strings::toutf8(msg));
 	file::Close(fd);
 
 	// Read back
-	let fd2 = file::MustOpen("/tmp/pika_demo.txt", "r");
+	let fd2 = file::OpenAssert("/tmp/pika_demo.txt", "r");
 	let buf: [64]u8 = [0...];
-	let n = file::MustRead(fd2, buf[0z..64z]);
+	let n = file::ReadAssert(fd2, buf[0z..64z]);
 	file::Close(fd2);
 
 	assert(n == len(msg): i64);
 
 	// Clean up
-	file::MustDel("/tmp/pika_demo.txt");
+	file::DelAssert("/tmp/pika_demo.txt");
 };
 ```
 
@@ -568,7 +568,7 @@ fn try_read(path: str) i64 = {
 	match (result) {
 	case let fd: i32 =>
 		let buf: [64]u8 = [0...];
-		let n = file::MustRead(fd, buf[0z..64z]);
+		let n = file::ReadAssert(fd, buf[0z..64z]);
 		file::Close(fd);
 		return n;
 	case file::FileError =>

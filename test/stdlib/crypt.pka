@@ -2,7 +2,7 @@ use crypt;
 
 export fn main() void = {
 	let buf: [32]u8 = [0...];
-	crypt::MustRandom(buf[0z..32z]);
+	crypt::RandomAssert(buf[0z..32z]);
 
 	// Verify not all zeros (extremely unlikely for 32 random bytes)
 	let nonzero: i32 = 0;

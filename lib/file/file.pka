@@ -38,9 +38,9 @@ export @symbol("pk_file_opendir")   fn OpenDir(path: str) DirOpenResult;
 export @symbol("pk_file_dirnext")   fn DirNext(handle: i64, buf: []u8) DirEntry;
 export @symbol("pk_file_closedir")  fn CloseDir(handle: i64) void;
 
-// Must* helpers — unwrap result or abort with message
+// *Assert helpers — unwrap result or abort with message
 
-export fn MustOpen(path: str, mode: str) i32 = {
+export fn OpenAssert(path: str, mode: str) i32 = {
     let r = Open(path, mode);
     let fd: i32 = -1;
     match (r) {
@@ -50,7 +50,7 @@ export fn MustOpen(path: str, mode: str) i32 = {
     return fd;
 };
 
-export fn MustRead(fd: i32, buf: []u8) i64 = {
+export fn ReadAssert(fd: i32, buf: []u8) i64 = {
     let r = Read(fd, buf);
     let n: i64 = -1;
     match (r) {
@@ -60,7 +60,7 @@ export fn MustRead(fd: i32, buf: []u8) i64 = {
     return n;
 };
 
-export fn MustWrite(fd: i32, data: []u8) i64 = {
+export fn WriteAssert(fd: i32, data: []u8) i64 = {
     let r = Write(fd, data);
     let n: i64 = -1;
     match (r) {
@@ -70,7 +70,7 @@ export fn MustWrite(fd: i32, data: []u8) i64 = {
     return n;
 };
 
-export fn MustSeek(fd: i32, pos: i64) i64 = {
+export fn SeekAssert(fd: i32, pos: i64) i64 = {
     let r = Seek(fd, pos);
     let n: i64 = -1;
     match (r) {
@@ -80,7 +80,7 @@ export fn MustSeek(fd: i32, pos: i64) i64 = {
     return n;
 };
 
-export fn MustDel(path: str) void = {
+export fn DelAssert(path: str) void = {
     let r = Del(path);
     match (r) {
     case FileOk => void;
@@ -88,7 +88,7 @@ export fn MustDel(path: str) void = {
     };
 };
 
-export fn MustRename(old: str, new: str) void = {
+export fn RenameAssert(old: str, new: str) void = {
     let r = Rename(old, new);
     match (r) {
     case FileOk => void;
@@ -96,7 +96,7 @@ export fn MustRename(old: str, new: str) void = {
     };
 };
 
-export fn MustMkdir(path: str) void = {
+export fn MkdirAssert(path: str) void = {
     let r = Mkdir(path);
     match (r) {
     case FileOk => void;
@@ -104,7 +104,7 @@ export fn MustMkdir(path: str) void = {
     };
 };
 
-export fn MustRmdir(path: str) void = {
+export fn RmdirAssert(path: str) void = {
     let r = Rmdir(path);
     match (r) {
     case FileOk => void;
@@ -112,7 +112,7 @@ export fn MustRmdir(path: str) void = {
     };
 };
 
-export fn MustOpenDir(path: str) i64 = {
+export fn OpenDirAssert(path: str) i64 = {
     let r = OpenDir(path);
     let h: i64 = -1;
     match (r) {

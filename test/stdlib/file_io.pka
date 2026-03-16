@@ -7,8 +7,8 @@ export fn main() void = {
 	let data = strings::toutf8(data_str);
 
 	// Open / Write / Close
-	let fd = file::MustOpen(path, "w");
-	let wrote = file::MustWrite(fd, data);
+	let fd = file::OpenAssert(path, "w");
+	let wrote = file::WriteAssert(fd, data);
 	assert(wrote == data.len: i64);
 	file::Close(fd);
 
@@ -22,9 +22,9 @@ export fn main() void = {
 	assert(file::Size(path) == data.len: i64);
 
 	// Read back
-	let fd2 = file::MustOpen(path, "r");
+	let fd2 = file::OpenAssert(path, "r");
 	let buf: [64]u8 = [0...];
-	let nread = file::MustRead(fd2, buf[0z..data.len]);
+	let nread = file::ReadAssert(fd2, buf[0z..data.len]);
 	assert(nread == data.len: i64);
 
 	// Verify contents
@@ -36,22 +36,22 @@ export fn main() void = {
 	file::Close(fd2);
 
 	// Seek / Loc
-	let fd3 = file::MustOpen(path, "r");
-	let seeked = file::MustSeek(fd3, 5);
+	let fd3 = file::OpenAssert(path, "r");
+	let seeked = file::SeekAssert(fd3, 5);
 	assert(seeked == 5);
 	assert(file::Loc(fd3) == 5);
 	file::Close(fd3);
 
 	// Del
-	file::MustDel(path);
+	file::DelAssert(path);
 	assert(file::Exists(path) == false);
 
 	// Mkdir / Rmdir
 	let dir = "/tmp/libpk_test_dir";
 	file::Rmdir(dir);
-	file::MustMkdir(dir);
+	file::MkdirAssert(dir);
 	assert(file::IsDir(dir) == true);
-	file::MustRmdir(dir);
+	file::RmdirAssert(dir);
 	assert(file::Exists(dir) == false);
 
 	// OpenDir / DirNext / CloseDir
@@ -60,13 +60,13 @@ export fn main() void = {
 	let list_a = "/tmp/libpk_list_dir/a.txt";
 	let list_b = "/tmp/libpk_list_dir/b.txt";
 	file::Rmdir(list_dir);
-	file::MustMkdir(list_dir);
-	let list_fda = file::MustOpen(list_a, "w");
+	file::MkdirAssert(list_dir);
+	let list_fda = file::OpenAssert(list_a, "w");
 	file::Close(list_fda);
-	let list_fdb = file::MustOpen(list_b, "w");
+	let list_fdb = file::OpenAssert(list_b, "w");
 	file::Close(list_fdb);
 
-	let dh = file::MustOpenDir(list_dir);
+	let dh = file::OpenDirAssert(list_dir);
 	let count: i32 = 0;
 	let nbuf: [256]u8 = [0...];
 	for (true) {
@@ -78,16 +78,16 @@ export fn main() void = {
 	};
 	file::CloseDir(dh);
 	assert(count == 2);
-	file::MustDel(list_a);
-	file::MustDel(list_b);
-	file::MustRmdir(list_dir);
+	file::DelAssert(list_a);
+	file::DelAssert(list_b);
+	file::RmdirAssert(list_dir);
 
 	// Rename
 	let path_a = "/tmp/libpk_rename_a.txt";
 	let path_b = "/tmp/libpk_rename_b.txt";
-	let fda = file::MustOpen(path_a, "w");
+	let fda = file::OpenAssert(path_a, "w");
 	file::Close(fda);
-	file::MustRename(path_a, path_b);
+	file::RenameAssert(path_a, path_b);
 	assert(file::Exists(path_a) == false);
 	assert(file::Exists(path_b) == true);
 	file::Del(path_b);

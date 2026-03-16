@@ -354,7 +354,7 @@ fn discover(root: str, dir: str,
 	for (sp > 0) {
 		sp = sp - 1;
 		let cur = stack[sp: size];
-		let h = file::MustOpenDir(cur);
+		let h = file::OpenDirAssert(cur);
 		let ebuf: [512]u8 = [0...];
 		for (true) {
 			let z: size = 0z;
@@ -411,7 +411,7 @@ fn discover(root: str, dir: str,
 fn write_str(fd: i32, s: str) void = {
 	let d = strings::toutf8(s);
 	if (d.len > 0z) {
-		let n = file::MustWrite(fd, d);
+		let n = file::WriteAssert(fd, d);
 		if (n != d.len: i64) {
 			die("short write");
 		};
@@ -470,15 +470,15 @@ fn ensure_dir(path: str) void = {
 };
 
 fn append_file_to_fd(dstfd: i32, src: str) void = {
-	let srcfd = file::MustOpen(src, "r");
+	let srcfd = file::OpenAssert(src, "r");
 	let buf: [16384]u8 = [0...];
 	for (true) {
-		let n = file::MustRead(srcfd, buf[0z..16384z]);
+		let n = file::ReadAssert(srcfd, buf[0z..16384z]);
 		if (n <= 0) {
 			break;
 		};
 		let want = n: size;
-		let wrote = file::MustWrite(dstfd, buf[0z..want]);
+		let wrote = file::WriteAssert(dstfd, buf[0z..want]);
 		if (wrote != n) {
 			die("short write");
 		};
@@ -488,13 +488,13 @@ fn append_file_to_fd(dstfd: i32, src: str) void = {
 
 fn run_pika2c(stdin_path: str, stdout_path: str, append_out: bool) i32 = {
 	let argv: [1]str = [""];
-	let pid = proc::MustCreateRedirect("pika2c", argv[0z..0z],
+	let pid = proc::CreateRedirectAssert("pika2c", argv[0z..0z],
 		stdin_path, stdout_path, append_out, "", false);
 	return proc::Wait(pid, -1);
 };
 
 fn run_cc(cc: str, argv: *StrList) i32 = {
-	let pid = proc::MustCreate(cc, argv.data[0z..(argv.len: size)]);
+	let pid = proc::CreateAssert(cc, argv.data[0z..(argv.len: size)]);
 	return proc::Wait(pid, -1);
 };
 
@@ -704,7 +704,7 @@ export fn main() void = {
 	let tmp_h = make_tmp(&pool, tmp_root, "headers", ".pka");
 	let tmp_m = make_tmp(&pool, tmp_root, "module", ".pka");
 
-	let cfd = file::MustOpen(tmp_c, "w");
+	let cfd = file::OpenAssert(tmp_c, "w");
 	writeln(cfd, "#include <stddef.h>");
 	writeln(cfd, "extern int rt_memcmp(const void*, const void*, size_t);");
 
@@ -719,7 +719,7 @@ export fn main() void = {
 
 	i = 0;
 	for (i < mod_paths.len) {
-		let mfd = file::MustOpen(tmp_m, "w");
+		let mfd = file::OpenAssert(tmp_m, "w");
 		write_str(mfd, "-N ");
 		writeln(mfd, mod_names.data[i: size]);
 		append_file_to_fd(mfd, mod_paths.data[i: size]);
@@ -735,11 +735,11 @@ export fn main() void = {
 		i = i + 1;
 	};
 
-	let hfd = file::MustOpen(tmp_h, "w");
+	let hfd = file::OpenAssert(tmp_h, "w");
 	file::Close(hfd);
 	i = 0;
 	for (i < mod_paths.len) {
-		let hmfd = file::MustOpen(tmp_m, "w");
+		let hmfd = file::OpenAssert(tmp_m, "w");
 		writeln(hmfd, "-H");
 		write_str(hmfd, "-N ");
 		writeln(hmfd, mod_names.data[i: size]);
@@ -756,7 +756,7 @@ export fn main() void = {
 		i = i + 1;
 	};
 
-	hfd = file::MustOpen(tmp_h, "a");
+	hfd = file::OpenAssert(tmp_h, "a");
 	if (pka_files.len > 0) {
 		i = 0;
 		for (i < pka_files.len) {
@@ -774,7 +774,7 @@ export fn main() void = {
 		proc::Exit(p2c_status2);
 	};
 
-	let appendfd = file::MustOpen(tmp_c, "a");
+	let appendfd = file::OpenAssert(tmp_c, "a");
 	if (lib_h_files.len > 0) {
 		i = 0;
 		for (i < lib_h_files.len) {

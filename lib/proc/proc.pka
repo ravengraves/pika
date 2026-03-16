@@ -24,7 +24,7 @@ export @symbol("pk_proc_maxprio")   fn MaxPriority() i32;
 export @symbol("pk_proc_setprio")   fn SetPriority(pid: i32, level: i32) VoidResult;
 export @symbol("pk_proc_getprio")   fn GetPriority(pid: i32) i32;
 
-export fn MustCreate(path: str, argv: []str) i32 = {
+export fn CreateAssert(path: str, argv: []str) i32 = {
     let r = Create(path, argv);
     let pid: i32 = -1;
     match (r) {
@@ -34,7 +34,7 @@ export fn MustCreate(path: str, argv: []str) i32 = {
     return pid;
 };
 
-export fn MustCreateRedirect(path: str, argv: []str,
+export fn CreateRedirectAssert(path: str, argv: []str,
 	stdin_path: str,
 	stdout_path: str, stdout_append: bool,
 	stderr_path: str, stderr_append: bool) i32 = {
