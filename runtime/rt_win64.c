@@ -4,6 +4,7 @@
 #include <string.h>
 #include <io.h>
 #include <process.h>
+#include <stdlib.h>
 
 /* Console API — declared directly to avoid pulling in all of windows.h */
 #define WIN32_LEAN_AND_MEAN
@@ -144,6 +145,36 @@ hare_str pk_args_at(int32_t index) {
 	size_t n = 0;
 	while (s[n] != '\0') n++;
 	return (hare_str){(uint8_t*)s, n};
+}
+
+_Bool pk_env_has(hare_str name) {
+	char name_buf[4096];
+	if (name.len >= sizeof(name_buf)) {
+		return 0;
+	}
+	for (size_t i = 0; i < name.len; i++) {
+		name_buf[i] = (char)name.data[i];
+	}
+	name_buf[name.len] = '\0';
+	return getenv(name_buf) != NULL ? 1 : 0;
+}
+
+hare_str pk_env_get(hare_str name) {
+	char name_buf[4096];
+	if (name.len >= sizeof(name_buf)) {
+		return (hare_str){0, 0};
+	}
+	for (size_t i = 0; i < name.len; i++) {
+		name_buf[i] = (char)name.data[i];
+	}
+	name_buf[name.len] = '\0';
+	char* value = getenv(name_buf);
+	if (value == NULL) {
+		return (hare_str){0, 0};
+	}
+	size_t n = 0;
+	while (value[n] != '\0') n++;
+	return (hare_str){(uint8_t*)value, n};
 }
 
 static void rt_console_init(void) {

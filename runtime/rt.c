@@ -10,6 +10,7 @@ typedef struct { uint8_t* data; size_t len; } hare_str;
 
 static int rt_argc = 0;
 static char** rt_argv = NULL;
+static char** rt_envp = NULL;
 
 /* Error tag base for tagged unions */
 #define HARE_ERROR_TAG_BASE 0x80000000U
@@ -576,11 +577,48 @@ hare_str pk_args_at(int32_t index) {
 	return (hare_str){(uint8_t*)s, n};
 }
 
+static hare_str rt_env_lookup(hare_str name, int* found) {
+	if (found) *found = 0;
+	if (rt_envp == NULL) {
+		return (hare_str){0, 0};
+	}
+	for (char** env = rt_envp; *env != NULL; env++) {
+		const char* s = *env;
+		size_t i = 0;
+		while (i < name.len && s[i] != '\0' && s[i] != '=') {
+			if ((uint8_t)s[i] != name.data[i]) {
+				break;
+			}
+			i++;
+		}
+		if (i != name.len || s[i] != '=') {
+			continue;
+		}
+		const char* value = s + i + 1;
+		size_t n = 0;
+		while (value[n] != '\0') n++;
+		if (found) *found = 1;
+		return (hare_str){(uint8_t*)value, n};
+	}
+	return (hare_str){0, 0};
+}
+
+_Bool pk_env_has(hare_str name) {
+	int found = 0;
+	(void)rt_env_lookup(name, &found);
+	return found ? 1 : 0;
+}
+
+hare_str pk_env_get(hare_str name) {
+	return rt_env_lookup(name, NULL);
+}
+
 // Freestanding: use this directly for embedded
 __attribute__((used))
 int rt_start_c(int argc, char** argv) {
 	rt_argc = argc;
 	rt_argv = argv;
+	rt_envp = argv ? (argv + argc + 1) : (char**)0;
 	// Linux safety: kill this process if its parent exits.
 	rt_pdeathsig_init();
 	// Set FTZ+DAZ for -ffast-math performance.

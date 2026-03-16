@@ -18,6 +18,8 @@ for i in test/stdlib/*.pka; do
 	if [ "$name" = "args" ]; then
 		# This test validates flag and positional parsing, so it needs argv.
 		"$out" --flag value
+	elif [ "$name" = "env" ]; then
+		PIKA_ENV_TEST=rose PIKA_ENV_EMPTY= "$out"
 	else
 		"$out"
 	fi

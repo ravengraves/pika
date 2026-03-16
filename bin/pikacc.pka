@@ -678,6 +678,9 @@ export fn main() void = {
 	if (streq(platform, "win64")) {
 		cc = "x86_64-w64-mingw32-gcc";
 	};
+	if (!streq(cc_override, "")) {
+		cc = cc_override;
+	};
 
 	if (!streq(platform, "x86_64_raw") &&
 		!streq(platform, "aarch64_raw") &&
@@ -815,6 +818,11 @@ export fn main() void = {
 	push(&cc_argv, "-ffunction-sections");
 	push(&cc_argv, "-fdata-sections");
 	push(&cc_argv, optflag);
+	push(&cc_argv, "-ffast-math");
+	push(&cc_argv, "-fno-finite-math-only");
+	push(&cc_argv, "-funroll-loops");
+	push(&cc_argv, "-ftree-vectorize");
+	push(&cc_argv, "-fno-strict-aliasing");
 
 	if (streq(platform, "x86_64_raw")) {
 		push(&cc_argv, "-march=native");
