@@ -4,7 +4,21 @@ set -e
 cd "$(dirname "$0")/.."
 
 BENCH_CC="${BENCH_CC:-gcc}"
-BENCH_CFLAGS="-O3 -ffast-math -funroll-loops -ftree-vectorize -march=native -mtune=native -finline-functions -fno-strict-aliasing -flto"
+arch="$(uname -m)"
+
+case "$arch" in
+	x86_64|amd64)
+		BENCH_ARCH_FLAGS="-march=native -mtune=native"
+		;;
+	aarch64|arm64|armv7l|armv8l)
+		BENCH_ARCH_FLAGS="-mcpu=native"
+		;;
+	*)
+		BENCH_ARCH_FLAGS="-march=native -mtune=native"
+		;;
+esac
+
+BENCH_CFLAGS="-O3 -ffast-math -funroll-loops -ftree-vectorize $BENCH_ARCH_FLAGS -finline-functions -fno-strict-aliasing -flto"
 
 for b in whetstone dhrystone livermore memspeed linpack mandelbrot; do
 	mkdir -p "build/benchmarks/$b"
