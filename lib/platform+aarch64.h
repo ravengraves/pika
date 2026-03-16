@@ -197,26 +197,28 @@ static inline int64_t pk_syscall6(int64_t n, int64_t a1, int64_t a2, int64_t a3,
  * Structs
  * ======================================================================== */
 
-/* aarch64 Linux stat (128 bytes) — same layout as x86_64 for LP64 */
+/* aarch64 Linux stat (128 bytes) — matches asm-generic/stat.h on 64-bit Linux */
 struct pk_linux_stat {
 	uint64_t st_dev;
 	uint64_t st_ino;
-	uint64_t st_nlink;
 	uint32_t st_mode;
+	uint32_t st_nlink;
 	uint32_t st_uid;
 	uint32_t st_gid;
-	uint32_t __pad0;
 	uint64_t st_rdev;
+	uint64_t __pad1;
 	int64_t  st_size;
-	int64_t  st_blksize;
+	int32_t  st_blksize;
+	int32_t  __pad2;
 	int64_t  st_blocks;
 	int64_t  st_atime;
-	int64_t  st_atime_ns;
+	uint64_t st_atime_ns;
 	int64_t  st_mtime;
-	int64_t  st_mtime_ns;
+	uint64_t st_mtime_ns;
 	int64_t  st_ctime;
-	int64_t  st_ctime_ns;
-	int64_t  __unused[3];
+	uint64_t st_ctime_ns;
+	uint32_t __unused4;
+	uint32_t __unused5;
 };
 
 struct pk_sockaddr_in {
@@ -353,7 +355,7 @@ typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_Se
 typedef struct { uint16_t tag; union { intptr_t _0; intptr_t _1; } val; } file_VoidResult;
 typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_DirOpenResult;
 typedef struct { uint16_t tag; union { pk_str _0; intptr_t _1; intptr_t _2; } val; } file_DirEntry;
-typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_ReadLinkResult;
+typedef struct { uint16_t tag; union { pk_str _0; intptr_t _1; } val; } file_ReadLinkResult;
 
 /* io module */
 typedef struct { uint16_t tag; union { int16_t _0; intptr_t _1; intptr_t _2; } val; } io_PollResult;

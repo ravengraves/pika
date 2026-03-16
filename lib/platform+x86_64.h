@@ -346,7 +346,7 @@ typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_Se
 typedef struct { uint16_t tag; union { intptr_t _0; intptr_t _1; } val; } file_VoidResult;
 typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_DirOpenResult;
 typedef struct { uint16_t tag; union { pk_str _0; intptr_t _1; intptr_t _2; } val; } file_DirEntry;
-typedef struct { uint16_t tag; union { int64_t _0; intptr_t _1; } val; } file_ReadLinkResult;
+typedef struct { uint16_t tag; union { pk_str _0; intptr_t _1; } val; } file_ReadLinkResult;
 
 /* io module */
 typedef struct { uint16_t tag; union { int16_t _0; intptr_t _1; intptr_t _2; } val; } io_PollResult;
