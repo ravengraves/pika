@@ -55,7 +55,18 @@ export fn main() void = {
 	assert(file::Exists(dir) == false);
 
 	// OpenDir / DirNext / CloseDir
-	let dh = file::MustOpenDir("/tmp");
+	// Enumerate a directory we control instead of assuming /tmp is readable.
+	let list_dir = "/tmp/libpk_list_dir";
+	let list_a = "/tmp/libpk_list_dir/a.txt";
+	let list_b = "/tmp/libpk_list_dir/b.txt";
+	file::Rmdir(list_dir);
+	file::MustMkdir(list_dir);
+	let list_fda = file::MustOpen(list_a, "w");
+	file::Close(list_fda);
+	let list_fdb = file::MustOpen(list_b, "w");
+	file::Close(list_fdb);
+
+	let dh = file::MustOpenDir(list_dir);
 	let count: i32 = 0;
 	let nbuf: [256]u8 = [0...];
 	for (true) {
@@ -66,7 +77,10 @@ export fn main() void = {
 		count = count + 1;
 	};
 	file::CloseDir(dh);
-	assert(count > 0);
+	assert(count == 2);
+	file::MustDel(list_a);
+	file::MustDel(list_b);
+	file::MustRmdir(list_dir);
 
 	// Rename
 	let path_a = "/tmp/libpk_rename_a.txt";
