@@ -9,28 +9,33 @@ for b in $BENCHMARKS; do
 	mkdir -p "build/benchmarks/$b"
 done
 
+platform=""
+case "$(uname -m)" in
+	aarch64|arm64) platform="--platform aarch64_raw" ;;
+esac
+
 echo "=== Pika whetstone ==="
-bin/pikacc benchmarks/bench.pka benchmarks/whetstone/whetstone.pka pikabench.c -o build/benchmarks/whetstone/whetstone
+bin/pikacc $platform benchmarks/bench.pka benchmarks/whetstone/whetstone.pka pikabench.c -o build/benchmarks/whetstone/whetstone
 build/benchmarks/whetstone/whetstone
 
 echo "=== Pika dhrystone ==="
-CC=clang bin/pikacc benchmarks/bench.pka benchmarks/dhrystone/dhrystone.pka pikabench.c -o build/benchmarks/dhrystone/dhrystone
+CC=clang bin/pikacc $platform benchmarks/bench.pka benchmarks/dhrystone/dhrystone.pka pikabench.c -o build/benchmarks/dhrystone/dhrystone
 build/benchmarks/dhrystone/dhrystone
 
 echo "=== Pika mandelbrot ==="
-CC=clang bin/pikacc benchmarks/bench.pka benchmarks/mandelbrot/mandelbrot.pka pikabench.c -o build/benchmarks/mandelbrot/mandelbrot
+CC=clang bin/pikacc $platform benchmarks/bench.pka benchmarks/mandelbrot/mandelbrot.pka pikabench.c -o build/benchmarks/mandelbrot/mandelbrot
 build/benchmarks/mandelbrot/mandelbrot > /dev/null
 
 echo "=== Pika livermore ==="
-bin/pikacc benchmarks/bench.pka benchmarks/livermore/livermore.pka pikabench.c -o build/benchmarks/livermore/livermore
+bin/pikacc $platform benchmarks/bench.pka benchmarks/livermore/livermore.pka pikabench.c -o build/benchmarks/livermore/livermore
 build/benchmarks/livermore/livermore
 
 echo "=== Pika memspeed ==="
-bin/pikacc benchmarks/bench.pka benchmarks/memspeed/memspeed.pka pikabench.c -o build/benchmarks/memspeed/memspeed
+bin/pikacc $platform benchmarks/bench.pka benchmarks/memspeed/memspeed.pka pikabench.c -o build/benchmarks/memspeed/memspeed
 build/benchmarks/memspeed/memspeed
 
 echo "=== Pika linpack ==="
-bin/pikacc benchmarks/bench.pka benchmarks/linpack/linpack.pka pikabench.c -o build/benchmarks/linpack/linpack
+bin/pikacc $platform benchmarks/bench.pka benchmarks/linpack/linpack.pka pikabench.c -o build/benchmarks/linpack/linpack
 build/benchmarks/linpack/linpack
 
 echo ""
