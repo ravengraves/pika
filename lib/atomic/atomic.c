@@ -10,5 +10,6 @@ uint64_t pk_atomic_load(uint64_t* a, int32_t order) {
 
 _Bool pk_atomic_cas(uint64_t* a, uint64_t* expected, uint64_t desired,
 					int32_t success, int32_t failure) {
-	return __atomic_compare_exchange_n(a, expected, desired, 1, success, failure);
+	/* Use strong CAS: weak CAS may fail spuriously on LL/SC targets like AArch64. */
+	return __atomic_compare_exchange_n(a, expected, desired, 0, success, failure);
 }

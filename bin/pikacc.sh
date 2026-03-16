@@ -8,6 +8,9 @@ set -e
 PLATFORM="x86_64_raw"
 OUTPUT=""
 OPTLEVEL="3"
+MCPU=""
+MARCH=""
+MTUNE=""
 PKAFILES=()
 CFILES=()
 OFILES=()
@@ -16,6 +19,9 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) shift; OUTPUT="$1" ;;
     --platform) shift; PLATFORM="$1" ;;
+    --mcpu) shift; MCPU="$1" ;;
+    --march) shift; MARCH="$1" ;;
+    --mtune) shift; MTUNE="$1" ;;
     -O[s0123]) OPTLEVEL="${1#-O}" ;;
     *.c) CFILES+=( "$1" ) ;;
     *.o|*.a) OFILES+=( "$1" ) ;;
@@ -58,6 +64,8 @@ case "$PLATFORM" in
 -Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
   aarch64_raw)
     CFLAGS="$CFLAGS_COMMON \
+-mcpu=native \
+-mno-outline-atomics \
 -fno-builtin -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
 -fno-stack-protector -fno-ident \
 -Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
@@ -75,6 +83,15 @@ esac
 
 if [ -n "${CFLAGS_EXTRA:-}" ]; then
   CFLAGS="$CFLAGS $CFLAGS_EXTRA"
+fi
+if [ -n "$MCPU" ]; then
+  CFLAGS="$CFLAGS -mcpu=$MCPU"
+fi
+if [ -n "$MARCH" ]; then
+  CFLAGS="$CFLAGS -march=$MARCH"
+fi
+if [ -n "$MTUNE" ]; then
+  CFLAGS="$CFLAGS -mtune=$MTUNE"
 fi
 
 # --- Runtime selection ---

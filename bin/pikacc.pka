@@ -42,6 +42,10 @@ fn die(msg: str) void = {
 fn usage() void = {
 	fb::Prints("Usage: pikacc <pka files...> [opts] -o <output>\n");
 	fb::Prints("Options:\n");
+	fb::Prints("  --cc <compiler>\n");
+	fb::Prints("  --mcpu <cpu>\n");
+	fb::Prints("  --march <arch>\n");
+	fb::Prints("  --mtune <cpu>\n");
 	fb::Prints("  --platform x86_64_raw|aarch64_raw|libc|win64\n");
 	fb::Prints("  -O0|-O1|-O2|-O3\n");
 	fb::Prints("  -M <module_root>   (recursive module discovery, default: lib)\n");
@@ -431,6 +435,14 @@ fn make_tmp(pool: *Pool, root: str, name: str, suffix: str) str = {
 	return pool_store(pool, fb::ToStr(&b));
 };
 
+fn make_cc_flag(pool: *Pool, prefix: str, value: str) str = {
+	let bbuf: [128]u8 = [0...];
+	let b = fb::New(bbuf[0z..128z]);
+	fb::Write(&b, prefix);
+	fb::Write(&b, value);
+	return pool_store(pool, fb::ToStr(&b));
+};
+
 fn maybe_del(path: str) void = {
 	let r = file::Del(path);
 	match (r) {
@@ -504,6 +516,10 @@ export fn main() void = {
 	let output: str = "";
 	let platform: str = "x86_64_raw";
 	let optlevel: str = "3";
+	let cc_override: str = "";
+	let mcpu_override: str = "";
+	let march_override: str = "";
+	let mtune_override: str = "";
 
 	let include_tags = StrList {
 		data = &g_include_arr: *[*]str,
@@ -581,6 +597,22 @@ export fn main() void = {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
 			output = args::At(i);
+		} else if (streq(a, "--cc")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			cc_override = args::At(i);
+		} else if (streq(a, "--mcpu")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			mcpu_override = args::At(i);
+		} else if (streq(a, "--march")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			march_override = args::At(i);
+		} else if (streq(a, "--mtune")) {
+			i = i + 1;
+			if (i >= argc) { usage(); proc::Exit(1); };
+			mtune_override = args::At(i);
 		} else if (streq(a, "--platform")) {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
@@ -800,6 +832,10 @@ export fn main() void = {
 		push(&cc_argv, "-static");
 		push(&cc_argv, "-s");
 	} else if (streq(platform, "aarch64_raw")) {
+		// Native AArch64 build: use the host CPU model for ISA features and tuning.
+		push(&cc_argv, "-mcpu=native");
+		// Keep atomics fully inline for freestanding raw builds.
+		push(&cc_argv, "-mno-outline-atomics");
 		push(&cc_argv, "-fno-builtin");
 		push(&cc_argv, "-ffreestanding");
 		push(&cc_argv, "-nostdlib");
@@ -825,6 +861,16 @@ export fn main() void = {
 		push(&cc_argv, "-Wl,--gc-sections");
 		push(&cc_argv, "-flto");
 		push(&cc_argv, "-s");
+	};
+
+	if (!streq(mcpu_override, "")) {
+		push(&cc_argv, make_cc_flag(&pool, "-mcpu=", mcpu_override));
+	};
+	if (!streq(march_override, "")) {
+		push(&cc_argv, make_cc_flag(&pool, "-march=", march_override));
+	};
+	if (!streq(mtune_override, "")) {
+		push(&cc_argv, make_cc_flag(&pool, "-mtune=", mtune_override));
 	};
 
 	push(&cc_argv, "-o");

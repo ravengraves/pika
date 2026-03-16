@@ -638,7 +638,8 @@ void _start(void) {
 		"mov x30, #0\n"            // Clear link register
 		"ldr x0, [sp]\n"           // argc
 		"add x1, sp, #8\n"         // argv
-		"and sp, sp, #-16\n"       // Align stack to 16 bytes
+		// Linux/AArch64 enters _start with SP already 16-byte aligned.
+		// Keep it unchanged so the call to rt_start_c is ABI-correct.
 		"bl rt_start_c\n"
 		"mov x8, #93\n"            // SYS_exit
 		"svc #0\n"
