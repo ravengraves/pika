@@ -8,8 +8,8 @@ export @symbol("pk_clock_time_ns")  fn TimeNS() i64;
 
 let NS_PER_COUNT: f64 = -1.0f64;
 
-// Since returns seconds elapsed since start_tick.
-export fn Since(start_tick: u64) f64 = {
+// returns seconds elapsed since start_tick.
+export fn Elapsed(start_tick: u64) f64 = {
     return Dt(Now(), start_tick);
 };
 

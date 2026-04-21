@@ -13,10 +13,17 @@
 
 use rt;
 use strings;
+use clock;
+use fb;
 
 def MAND_N: i32 = 16000;
 
 export fn main() void = {
+	clock::Calibrate(0.01);
+	let start = clock::Now();
+	let outbuf: [512]u8 = [0...];
+	let outfb = fb::New(outbuf[0..]);
+
 	let n: i32 = MAND_N;
 	let n8: i32 = (n + 7) & -8;
 	let byte_width: i32 = n8 / 8;
@@ -151,4 +158,8 @@ export fn main() void = {
 		rt::write(1, (rowp + (2 * byte_width): size): *opaque, byte_width: size);
 		rt::write(1, (rowp + (3 * byte_width): size): *opaque, byte_width: size);
 	};
+
+	fb::Wf64(&outfb, clock::Elapsed(start));
+	fb::Write(&outfb, " seconds\n");
+	fb::EPrint(&outfb);
 };

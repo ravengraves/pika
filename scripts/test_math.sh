@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 mkdir -p build/test
-{ printf '%s\n' '-N math'; cat lib/math/math.pka; } | ./bin/pika2c > build/test/math.c
+{ printf '%s\n' '-N math'; cat lib/math/math.pka; } | pika2c > build/test/math.c
 cat test/math_test.c >> build/test/math.c
 gcc -std=c11 -Wall -Wextra -O1 -fno-strict-aliasing \
 	-ffast-math -funroll-loops -march=native -mtune=native \

@@ -9,7 +9,7 @@ export fn main() void = {
 	let elapsed = clock::Dt(stop, start);
 	assert(stop > start);
 	assert(elapsed > 0.001f64);
-	let elapsed2 = clock::Since(start);
+	let elapsed2 = clock::Elapsed(start);
 	assert(elapsed2 >= elapsed);
 
 	// TimeNS should return positive value
