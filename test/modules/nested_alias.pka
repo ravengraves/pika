@@ -1,0 +1,5 @@
+use c=example::constants;
+
+export fn main() void = {
+    assert(c::Answer == 42);
+};

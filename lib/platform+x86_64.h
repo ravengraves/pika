@@ -14,7 +14,11 @@
 /* Single TU: pika2c already defined hare_str etc. — alias them. */
 typedef hare_str pk_str;
 typedef hare_slice_uint8_t pk_slice_u8;
+#ifdef PIKA_SLICE_DEF_hare_slice_hare_str
 typedef hare_slice_hare_str pk_slice_str;
+#else
+typedef struct { hare_str* data; size_t len; size_t cap; } pk_slice_str;
+#endif
 #else
 /* Separate TU: define our own layout-compatible types. */
 typedef struct { uint8_t* data; size_t len; } pk_str;
@@ -383,7 +387,7 @@ typedef struct { io_PollFd* data; size_t len; size_t cap; } pk_slice_io_PollFd;
 #endif /* !HARE_DEFINE_SLICE */
 
 /* Slice type for pollmany in single-TU mode — pika2c generates this */
-#ifdef HARE_DEFINE_SLICE
+#ifdef PIKA_SLICE_DEF_hare_slice_io_PollFd
 typedef hare_slice_io_PollFd pk_slice_io_PollFd;
 #endif
 

@@ -1,0 +1,5 @@
+use math;
+
+export fn Double(value: i32) i32 = {
+    return math::round(value:f32 * 2.0f32):i32;
+};

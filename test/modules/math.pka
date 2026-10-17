@@ -1,0 +1,5 @@
+use math;
+
+export fn main() void = {
+    assert(math::popcount(7u64) == 3);
+};

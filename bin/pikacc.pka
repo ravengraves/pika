@@ -486,6 +486,118 @@ fn append_file_to_fd(dstfd: i32, src: str) void = {
 	file::Close(srcfd);
 };
 
+// Deliberately match raw text, including comments and string literals.
+fn import_space(c: u8) bool = {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 11 || c == 12;
+};
+
+fn import_ident(c: u8) bool = {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') || c == '_';
+};
+
+fn mentions_module(source: str, name: str) bool = {
+    let text = strings::toutf8(source);
+    for (let i = 0z; i + 3z < text.len; i += 1z) {
+        if (text[i] != 'u' || text[i + 1z] != 's' || text[i + 2z] != 'e' ||
+            !import_space(text[i + 3z])) { continue; };
+        let start = i + 3z;
+        for (start < text.len && import_space(text[start])) { start += 1z; };
+        let after = start;
+        for (after < text.len && import_ident(text[after])) { after += 1z; };
+        for (after < text.len && import_space(text[after])) { after += 1z; };
+        // Optional alias: use local_name = module;
+        if (after < text.len && text[after] == '=') {
+            start = after + 1z;
+            for (start < text.len && import_space(text[start])) { start += 1z; };
+        };
+        // Match the final component, or the full mangled name for -M roots.
+        let buf: [1024]u8 = [0...];
+        let qualified = fb::New(buf);
+        let leaf = "";
+        for (start < text.len) {
+            let end = start;
+            for (end < text.len && import_ident(text[end])) { end += 1z; };
+            if (end == start) { break; };
+            leaf = strings::fromutf8_unsafe(text[start..end]);
+            fb::Write(&qualified, leaf);
+            for (end < text.len && import_space(text[end])) { end += 1z; };
+            if (end + 1z >= text.len || text[end] != ':' || text[end + 1z] != ':') { break; };
+            fb::Write(&qualified, "_");
+            start = end + 2z;
+            for (start < text.len && import_space(text[start])) { start += 1z; };
+        };
+        if (streq(leaf, name) || streq(fb::ToStr(&qualified), name)) { return true; };
+    };
+    return false;
+};
+
+fn read_source(pool: *Pool, name: str) str = {
+    let start = pool.used;
+    let fd = file::OpenAssert(name, "r");
+    for (true) {
+        if (pool.used == pool.cap) { die("source pool full"); };
+        let n = file::ReadAssert(fd, pool.data[pool.used..pool.cap]);
+        if (n <= 0) { break; };
+        pool.used += n: size;
+    };
+    file::Close(fd);
+    return strings::fromutf8_unsafe(pool.data[start..pool.used]);
+};
+
+let g_module_used: [4096]bool = [false...];
+
+fn filter_backing(files: *StrList, modules: *StrList) void = {
+    let count: i32 = 0;
+    for (let i: i32 = 0; i < files.len; i += 1) {
+        let dir = path::DirName(files.data[i: size]);
+        let owned = false;
+        let used = false;
+        for (let j: i32 = 0; j < modules.len; j += 1) {
+            if (streq(path::DirName(modules.data[j: size]), dir)) {
+                owned = true;
+                if (g_module_used[j: size]) { used = true; };
+            };
+        };
+        // Keep shared C files that have no corresponding Pika module.
+        if (!owned || used) {
+            files.data[count: size] = files.data[i: size]; count += 1;
+        };
+    };
+    files.len = count;
+};
+
+fn select_modules(inputs: *StrList, modules: *StrList, names: *StrList,
+    common: *StrList, tagged: *StrList, pool: *Pool) void = {
+    let queue_buf: [6144]str = [""...];
+    let queue = StrList { data = &queue_buf: *[*]str, cap = 6144, len = 0 };
+    for (let i: i32 = 0; i < inputs.len; i += 1) { push(&queue, inputs.data[i: size]); };
+    // Each newly selected library is scanned once for its own imports.
+    for (let i: i32 = 0; i < queue.len; i += 1) {
+        let saved = pool.used;
+        let source = read_source(pool, queue.data[i: size]);
+        for (let j: i32 = 0; j < modules.len; j += 1) {
+            if (!g_module_used[j: size] && mentions_module(source, names.data[j: size])) {
+                g_module_used[j: size] = true;
+                push(&queue, modules.data[j: size]);
+            };
+        };
+        pool.used = saved;
+    };
+    filter_backing(common, modules);
+    filter_backing(tagged, modules);
+    let count: i32 = 0;
+    for (let i: i32 = 0; i < modules.len; i += 1) {
+        if (g_module_used[i: size]) {
+            modules.data[count: size] = modules.data[i: size];
+            names.data[count: size] = names.data[i: size];
+            count += 1;
+        };
+    };
+    modules.len = count;
+    names.len = count;
+};
+
 fn run_pika2c(stdin_path: str, stdout_path: str, append_out: bool) i32 = {
 	let argv: [1]str = [""];
 	let pid = proc::CreateRedirectAssert("pika2c", argv[0z..0z],
@@ -675,6 +787,7 @@ export fn main() void = {
 		i = i + 1;
 	};
 
+	select_modules(&pka_files, &mod_paths, &mod_names, &lib_c_common, &lib_c_tagged, &pool);
 	sort_modules(&mod_paths, &mod_names);
 	sort_list(&lib_c_common);
 	sort_list(&lib_c_tagged);

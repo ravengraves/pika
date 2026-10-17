@@ -11,6 +11,7 @@ build bootstrap_pikacc: sh scripts/bootstrap_pikacc.sh
 build run_tests: sh scripts/test.sh || bootstrap_pikacc
 build run_stdlib_tests: sh scripts/test_stdlib.sh || bootstrap_pikacc
 build run_math_tests: sh scripts/test_math.sh || bootstrap_pikacc
+build run_module_tests: sh scripts/test_modules.sh || bootstrap_pikacc
 
 # Benchmarks
 build run_benchmarks: sh scripts/benchmark.sh
@@ -18,7 +19,7 @@ build run_benchmarks_c: sh scripts/benchmark_c.sh
 build run_benchmarks_rs: sh scripts/benchmark_rs.sh
 
 # Aggregate targets
-build check: phony bootstrap_pikacc run_tests run_stdlib_tests run_math_tests
+build check: phony bootstrap_pikacc run_tests run_stdlib_tests run_math_tests run_module_tests
 build bench: phony run_benchmarks
 build bench_c: phony run_benchmarks_c
 build bench_rs: phony run_benchmarks_rs

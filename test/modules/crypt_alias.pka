@@ -1,0 +1,6 @@
+use crypto = crypt;
+
+export fn main() void = {
+    let bytes: [16]u8 = [0...];
+    crypto::RandomAssert(bytes);
+};

@@ -1,0 +1,5 @@
+use example::arithmetic;
+
+export fn main() void = {
+    assert(arithmetic::Double(21) == 42);
+};
