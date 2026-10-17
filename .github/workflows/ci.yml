@@ -1,0 +1,44 @@
+name: Pika CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: pika
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm lld python3 ninja-build
+
+      - name: Check out Hare2X
+        uses: actions/checkout@v7
+        with:
+          repository: ravengraves/hare2x
+          ref: master
+          path: hare2x
+          token: ${{ secrets.DEPENDENCY_TOKEN || github.token }}
+
+      - name: Build and install Pika transpiler
+        run: |
+          make -C hare2x pika2c
+          sudo install -m 0755 hare2x/build/pika2c /usr/local/bin/pika2c
+
+      - name: Build
+        working-directory: pika
+        run: ninja bootstrap_pikacc
+
+      - name: Check
+        working-directory: pika
+        run: ninja check
