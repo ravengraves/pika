@@ -40,17 +40,15 @@ fn die(msg: str) void = {
 };
 
 fn usage() void = {
-	fb::Prints("Usage: pikacc <pka files...> [opts] -o <output>\n");
+	fb::Prints("Usage: pikacc <pka files...> [opts] -o <output> [-- <cc args...>]\n");
 	fb::Prints("Options:\n");
 	fb::Prints("  --cc <compiler>\n");
-	fb::Prints("  --mcpu <cpu>\n");
-	fb::Prints("  --march <arch>\n");
-	fb::Prints("  --mtune <cpu>\n");
 	fb::Prints("  --platform x86_64_raw|aarch64_raw|libc|win64\n");
-	fb::Prints("  -O0|-O1|-O2|-O3\n");
+	fb::Prints("  -R                release build\n");
 	fb::Prints("  -M <module_root>   (recursive module discovery, default: /usr/local/share/pika/lib or local lib)\n");
 	fb::Prints("  -T +tag            include files/folders containing +tag\n");
 	fb::Prints("  -T -tag            exclude files/folders containing +tag\n");
+	fb::Prints("  -- <cc args...>    forward remaining arguments to the C compiler\n");
 };
 
 fn push(list: *StrList, s: str) void = {
@@ -435,14 +433,6 @@ fn make_tmp(pool: *Pool, root: str, name: str, suffix: str) str = {
 	return pool_store(pool, fb::ToStr(&b));
 };
 
-fn make_cc_flag(pool: *Pool, prefix: str, value: str) str = {
-	let bbuf: [128]u8 = [0...];
-	let b = fb::New(bbuf[0z..128z]);
-	fb::Write(&b, prefix);
-	fb::Write(&b, value);
-	return pool_store(pool, fb::ToStr(&b));
-};
-
 fn maybe_del(path: str) void = {
 	let r = file::Del(path);
 	match (r) {
@@ -627,11 +617,8 @@ fn add_platform_tags(platform: str, include_tags: *StrList) void = {
 export fn main() void = {
 	let output: str = "";
 	let platform: str = "x86_64_raw";
-	let optlevel: str = "3";
+	let release = false;
 	let cc_override: str = "";
-	let mcpu_override: str = "";
-	let march_override: str = "";
-	let mtune_override: str = "";
 
 	let include_tags = StrList {
 		data = &g_include_arr: *[*]str,
@@ -708,10 +695,16 @@ export fn main() void = {
 	push(&mod_roots, pool_store(&pool, join_path(data_path, data_dir, "lib")));
 
 	let argc = args::Count();
+	let cc_args_start = argc;
 	let i: i32 = 1;
 	for (i < argc) {
 		let a = args::At(i);
-		if (streq(a, "-o")) {
+		if (streq(a, "--")) {
+			cc_args_start = i + 1;
+			break;
+		} else if (streq(a, "-R")) {
+			release = true;
+		} else if (streq(a, "-o")) {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
 			output = args::At(i);
@@ -719,29 +712,10 @@ export fn main() void = {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
 			cc_override = args::At(i);
-		} else if (streq(a, "--mcpu")) {
-			i = i + 1;
-			if (i >= argc) { usage(); proc::Exit(1); };
-			mcpu_override = args::At(i);
-		} else if (streq(a, "--march")) {
-			i = i + 1;
-			if (i >= argc) { usage(); proc::Exit(1); };
-			march_override = args::At(i);
-		} else if (streq(a, "--mtune")) {
-			i = i + 1;
-			if (i >= argc) { usage(); proc::Exit(1); };
-			mtune_override = args::At(i);
 		} else if (streq(a, "--platform")) {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
 			platform = args::At(i);
-		} else if (starts_with(a, "-O") && (strings::toutf8(a).len == 3z)) {
-			let d = strings::toutf8(a);
-			let ch = d[2z];
-			if (ch == '0') { optlevel = "0"; }
-			else if (ch == '1') { optlevel = "1"; }
-			else if (ch == '2') { optlevel = "2"; }
-			else if (ch == '3') { optlevel = "3"; };
 		} else if (streq(a, "-M")) {
 			i = i + 1;
 			if (i >= argc) { usage(); proc::Exit(1); };
@@ -762,6 +736,8 @@ export fn main() void = {
 			} else {
 				die("-T token must start with + or -");
 			};
+		} else if (starts_with(a, "-")) {
+			die("unknown option; pass C compiler flags after --");
 		} else if (ends_with(a, ".c")) {
 			push(&c_files, a);
 		} else if (ends_with(a, ".o") || ends_with(a, ".a")) {
@@ -800,6 +776,8 @@ export fn main() void = {
 	if (!streq(cc_override, "")) {
 		cc = cc_override;
 	};
+	let cc_name = path::BaseName(cc);
+	let clang = streq(cc_name, "clang") || starts_with(cc_name, "clang-");
 
 	if (!streq(platform, "x86_64_raw") &&
 		!streq(platform, "aarch64_raw") &&
@@ -920,12 +898,6 @@ export fn main() void = {
 	append_file_to_fd(appendfd, rt_file);
 	file::Close(appendfd);
 
-	let optb: [16]u8 = [0...];
-	let optfmt = fb::New(optb[0z..16z]);
-	fb::Write(&optfmt, "-O");
-	fb::Write(&optfmt, optlevel);
-	let optflag = pool_store(&pool, fb::ToStr(&optfmt));
-
 	push(&cc_argv, "-std=c11");
 	push(&cc_argv, "-Wall");
 	push(&cc_argv, "-Wextra");
@@ -936,70 +908,55 @@ export fn main() void = {
 	push(&cc_argv, "-Wno-unused-variable");
 	push(&cc_argv, "-Wno-uninitialized");
 	push(&cc_argv, "-Wno-strict-aliasing");
-	push(&cc_argv, "-ffunction-sections");
-	push(&cc_argv, "-fdata-sections");
-	push(&cc_argv, optflag);
-	push(&cc_argv, "-ffast-math");
-	push(&cc_argv, "-fno-finite-math-only");
-	push(&cc_argv, "-funroll-loops");
-	push(&cc_argv, "-ftree-vectorize");
+	// Keep representation/runtime requirements independent of optimization.
 	push(&cc_argv, "-fno-strict-aliasing");
-
-	if (streq(platform, "x86_64_raw")) {
-		push(&cc_argv, "-march=native");
-		push(&cc_argv, "-mtune=native");
-		push(&cc_argv, "-mshstk");
+	if (streq(platform, "x86_64_raw") || streq(platform, "aarch64_raw")) {
 		push(&cc_argv, "-fno-builtin");
 		push(&cc_argv, "-ffreestanding");
 		push(&cc_argv, "-nostdlib");
-		push(&cc_argv, "-fno-asynchronous-unwind-tables");
-		push(&cc_argv, "-fno-unwind-tables");
 		push(&cc_argv, "-fno-stack-protector");
-		push(&cc_argv, "-fno-ident");
-		push(&cc_argv, "-Wl,--gc-sections,--build-id=none,--strip-all");
-		push(&cc_argv, "-flto");
 		push(&cc_argv, "-static");
-		push(&cc_argv, "-s");
-	} else if (streq(platform, "aarch64_raw")) {
-		// Native AArch64 build: use the host CPU model for ISA features and tuning.
-		push(&cc_argv, "-mcpu=native");
-		// Keep atomics fully inline for freestanding raw builds.
-		push(&cc_argv, "-mno-outline-atomics");
-		push(&cc_argv, "-fno-builtin");
-		push(&cc_argv, "-ffreestanding");
-		push(&cc_argv, "-nostdlib");
-		push(&cc_argv, "-fno-asynchronous-unwind-tables");
-		push(&cc_argv, "-fno-unwind-tables");
-		push(&cc_argv, "-fno-stack-protector");
-		push(&cc_argv, "-fno-ident");
-		push(&cc_argv, "-Wl,--gc-sections,--build-id=none,--strip-all");
-		push(&cc_argv, "-flto");
-		push(&cc_argv, "-static");
-		push(&cc_argv, "-s");
+		if (streq(platform, "aarch64_raw")) { push(&cc_argv, "-mno-outline-atomics"); };
 	} else if (streq(platform, "libc")) {
-		push(&cc_argv, "-march=native");
-		push(&cc_argv, "-mtune=native");
 		push(&cc_argv, "-D_GNU_SOURCE");
 		push(&cc_argv, "-Wno-unused-result");
-		push(&cc_argv, "-Wl,--gc-sections");
-		push(&cc_argv, "-flto");
-		push(&cc_argv, "-s");
 	} else {
 		push(&cc_argv, "-Wno-unused-result");
 		push(&cc_argv, "-mconsole");
-		push(&cc_argv, "-Wl,--gc-sections");
-		push(&cc_argv, "-flto");
-		push(&cc_argv, "-s");
 	};
 
-	if (!streq(mcpu_override, "")) {
-		push(&cc_argv, make_cc_flag(&pool, "-mcpu=", mcpu_override));
-	};
-	if (!streq(march_override, "")) {
-		push(&cc_argv, make_cc_flag(&pool, "-march=", march_override));
-	};
-	if (!streq(mtune_override, "")) {
-		push(&cc_argv, make_cc_flag(&pool, "-mtune=", mtune_override));
+	if (release) {
+		push(&cc_argv, "-O3");
+		push(&cc_argv, "-ffast-math");
+		push(&cc_argv, "-fno-finite-math-only");
+		push(&cc_argv, "-funroll-loops");
+		push(&cc_argv, "-ftree-vectorize");
+		push(&cc_argv, "-ffunction-sections");
+		push(&cc_argv, "-fdata-sections");
+		push(&cc_argv, "-flto");
+		push(&cc_argv, "-s");
+		push(&cc_argv, "-fno-ident");
+		push(&cc_argv, "-Wl,--gc-sections,--strip-all");
+		if (streq(platform, "aarch64_raw")) {
+			push(&cc_argv, "-mcpu=native");
+		} else if (!streq(platform, "win64")) {
+			push(&cc_argv, "-march=native");
+			push(&cc_argv, "-mtune=native");
+		};
+		if (streq(platform, "x86_64_raw")) { push(&cc_argv, "-mshstk"); };
+		if (streq(platform, "x86_64_raw") || streq(platform, "aarch64_raw")) {
+			push(&cc_argv, "-fno-asynchronous-unwind-tables");
+			push(&cc_argv, "-fno-unwind-tables");
+		};
+		if (!streq(platform, "win64")) {
+			push(&cc_argv, "-Wl,--build-id=none");
+		};
+		if (clang && !streq(platform, "win64")) {
+			push(&cc_argv, "-fuse-ld=lld");
+			if (!streq(platform, "libc")) {
+				push(&cc_argv, "-fno-PIC");
+			};
+		};
 	};
 
 	push(&cc_argv, "-o");
@@ -1015,6 +972,15 @@ export fn main() void = {
 	} else if (streq(platform, "win64")) {
 		push(&cc_argv, "-lws2_32");
 		push(&cc_argv, "-lbcrypt");
+	} else {
+		push(&cc_argv, "-lgcc");
+	};
+
+	// Forward verbatim after generated inputs and defaults; library order matters.
+	i = cc_args_start;
+	for (i < argc) {
+		push(&cc_argv, args::At(i));
+		i += 1;
 	};
 
 	let start_ns = clock::TimeNS();

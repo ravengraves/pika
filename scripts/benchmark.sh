@@ -34,27 +34,27 @@ case "$(uname -m)" in
 esac
 
 echo "=== Pika whetstone ==="
-bin/pikacc $platform benchmarks/bench.pka benchmarks/whetstone/whetstone.pka pikabench.c -o build/benchmarks/whetstone/whetstone
+bin/pikacc -R $platform benchmarks/bench.pka benchmarks/whetstone/whetstone.pka pikabench.c -o build/benchmarks/whetstone/whetstone
 build/benchmarks/whetstone/whetstone
 
 echo "=== Pika dhrystone ==="
-CC=clang bin/pikacc $platform benchmarks/bench.pka benchmarks/dhrystone/dhrystone.pka pikabench.c -o build/benchmarks/dhrystone/dhrystone
+bin/pikacc --cc clang -R $platform benchmarks/bench.pka benchmarks/dhrystone/dhrystone.pka pikabench.c -o build/benchmarks/dhrystone/dhrystone
 build/benchmarks/dhrystone/dhrystone
 
 echo "=== Pika mandelbrot ==="
-CC=clang bin/pikacc $platform benchmarks/bench.pka benchmarks/mandelbrot/mandelbrot.pka pikabench.c -o build/benchmarks/mandelbrot/mandelbrot
+bin/pikacc --cc clang -R $platform benchmarks/bench.pka benchmarks/mandelbrot/mandelbrot.pka pikabench.c -o build/benchmarks/mandelbrot/mandelbrot
 build/benchmarks/mandelbrot/mandelbrot > /dev/null
 
 echo "=== Pika livermore ==="
-bin/pikacc $platform benchmarks/bench.pka benchmarks/livermore/livermore.pka pikabench.c -o build/benchmarks/livermore/livermore
+bin/pikacc -R $platform benchmarks/bench.pka benchmarks/livermore/livermore.pka pikabench.c -o build/benchmarks/livermore/livermore
 build/benchmarks/livermore/livermore
 
 echo "=== Pika memspeed ==="
-bin/pikacc $platform benchmarks/bench.pka benchmarks/memspeed/memspeed.pka pikabench.c -o build/benchmarks/memspeed/memspeed
+bin/pikacc -R $platform benchmarks/bench.pka benchmarks/memspeed/memspeed.pka pikabench.c -o build/benchmarks/memspeed/memspeed
 build/benchmarks/memspeed/memspeed
 
 echo "=== Pika linpack ==="
-bin/pikacc $platform benchmarks/bench.pka benchmarks/linpack/linpack.pka pikabench.c -o build/benchmarks/linpack/linpack
+bin/pikacc -R $platform benchmarks/bench.pka benchmarks/linpack/linpack.pka pikabench.c -o build/benchmarks/linpack/linpack
 build/benchmarks/linpack/linpack
 
 echo ""

@@ -29,7 +29,7 @@ pikacc ~/pika/pika/test/basic.pka -o /tmp/pika-basic
 ## Usage
 
 ```sh
-pikacc main.pka [options] -o app
+pikacc main.pka [options] -o app [-- C compiler arguments...]
 ```
 
 | Argument | Purpose |
@@ -40,14 +40,21 @@ pikacc main.pka [options] -o app
 | `-o output` | Output executable (required) |
 | `--cc compiler` | Select the C compiler |
 | `--platform target` | `x86_64_raw` (default), `aarch64_raw`, `libc`, or `win64` |
-| `-O0` … `-O3` | Optimization level (default: `-O3`) |
+| `-R` | Release build: `-O3`, loop unrolling, vectorization, fast math, native CPU tuning, LTO, and stripping |
 | `-M directory` | Add a Pika module search root; repeat as needed |
 | `-T +tag`, `-T -tag` | Include or exclude tagged module files |
-| `--mcpu cpu` | Set the target CPU |
-| `--march arch` | Set the target architecture |
-| `--mtune cpu` | Set CPU tuning |
+| `-- args...` | Forward all remaining arguments to the C compiler, preserving order and quoting |
 
-Use `--platform libc` for C libraries that depend on libc. Pass `.a` files directly; `-L` and `-l` are not currently supported.
+Without `-R`, the driver adds no optimization or debug flags. Choose them explicitly, for example `-- -O2` or `-- -O0 -g`. Put Pika inputs and driver options before `--`; C compiler options such as `-march=...`, `-I`, `-D`, `-L`, and `-l` go after it. Forwarded arguments follow the driver's defaults and generated source.
+
+On all supported targets, `-R` disables compiler identification emission (`-fno-ident`) and strips symbols. Non-Windows targets also disable build IDs. Linux Clang release builds use LLD (install `lld`) and add `-fno-PIC` for freestanding raw builds. Raw release builds disable unwind tables with either compiler.
+
+Pass `.a` files directly, or use `-- -L directory -lfoo`. Use `--platform libc` for C libraries that depend on libc:
+
+```sh
+pikacc main.pka libfoo.a -R --platform libc -o app
+pikacc main.pka --platform libc -o app -- -O2 -L ./libs -lfoo
+```
 
 ## Build and tests
 

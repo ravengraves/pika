@@ -41,7 +41,8 @@ bin/pikacc hello.pka -o hello
 
 Under the hood, `pikacc` runs `pika2c` (the transpiler) to generate GNU C11,
 then compiles it with `gcc` or `clang` and links with `runtime/rt.c`. You can
-override the C compiler with `CC=clang bin/pikacc ...`.
+override the C compiler with `bin/pikacc --cc clang ...`. Add `-R` for a
+release build, or pass C compiler options after `--`, such as `-- -O2`.
 
 For more examples, browse `test/*.pka` and `test/stdlib/*.pka`. To run the
 full test suite, use `ninja check`.

@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Pika compiler driver.
-# Usage: pikacc <pka files...> [-c cfiles...] [ofiles...] [afiles...] -o <output>
-#        [--platform x86_64_raw|aarch64_raw|libc|win64]
+# Usage: pikacc <pka files...> [cfiles...] [ofiles...] [afiles...] -o <output>
+#        [-R] [--platform x86_64_raw|aarch64_raw|libc|win64] [-- <cc args...>]
 
 set -e
 
 PLATFORM="x86_64_raw"
 OUTPUT=""
-OPTLEVEL="3"
-MCPU=""
-MARCH=""
-MTUNE=""
+RELEASE=0
+CC_ARGS=()
 PKAFILES=()
 CFILES=()
 OFILES=()
@@ -19,10 +17,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) shift; OUTPUT="$1" ;;
     --platform) shift; PLATFORM="$1" ;;
-    --mcpu) shift; MCPU="$1" ;;
-    --march) shift; MARCH="$1" ;;
-    --mtune) shift; MTUNE="$1" ;;
-    -O[s0123]) OPTLEVEL="${1#-O}" ;;
+    --cc) shift; CC="$1" ;;
+    -R) RELEASE=1 ;;
+    --) shift; CC_ARGS=("$@"); break ;;
+    -*) echo "Unknown option: $1 (pass C compiler flags after --)" >&2; exit 1 ;;
     *.c) CFILES+=( "$1" ) ;;
     *.o|*.a) OFILES+=( "$1" ) ;;
     *) PKAFILES+=( "$1" ) ;;
@@ -31,7 +29,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$OUTPUT" ] || [ ${#PKAFILES[@]} -eq 0 ]; then
-  echo "Usage: $0 <pka files...> [--platform x86_64_raw|aarch64_raw|libc|win64] -o <output>" >&2
+  echo "Usage: $0 <pka files...> [-R] [--cc compiler] [--platform target] -o <output> [-- <cc args...>]" >&2
   exit 1
 fi
 
@@ -42,56 +40,59 @@ case "$PLATFORM" in
 esac
 
 # --- Flags ---
-CFLAGS_COMMON="-std=c11 -Wall -Wextra -Wconversion -Wfloat-conversion \
--Wno-overlength-strings -Wno-unused-function -Wno-unused-variable \
--ffunction-sections -fdata-sections \
--O${OPTLEVEL} -ffast-math -fno-finite-math-only -funroll-loops -ftree-vectorize \
--finline-functions -fno-strict-aliasing"
+CFLAGS="-std=c11 -Wall -Wextra -Wconversion -Wfloat-conversion \
+-Wno-overlength-strings -Wno-unused-function -Wno-unused-variable -fno-strict-aliasing"
 
-# Avoid passing Clang-only warning flags to GCC.
-CC_VERSION=$($CC --version 2>/dev/null | head -n1 || true)
-# If $CC is clang (or anything that contains the word “clang”),
-# add the warning‑suppressions that only clang understands.
-if [[ "$(basename "$CC")" == clang ]]; then
-  CFLAGS_COMMON+=" -Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality"
+CC_NAME=$(basename "$CC")
+if [[ "$CC_NAME" == clang || "$CC_NAME" == clang-* ]]; then
+  CFLAGS+=" -Wno-gnu-auto-type -Wno-gnu-statement-expression -Wno-parentheses-equality"
 fi
 
 case "$PLATFORM" in
-  x86_64_raw)
-    CFLAGS="$CFLAGS_COMMON -march=native -mtune=native -mshstk \
--fno-builtin -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
--fno-stack-protector -fno-ident \
--Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
-  aarch64_raw)
-    CFLAGS="$CFLAGS_COMMON \
--mcpu=native \
--mno-outline-atomics \
--fno-builtin -ffreestanding -nostdlib -fno-asynchronous-unwind-tables -fno-unwind-tables \
--fno-stack-protector -fno-ident \
--Wl,--gc-sections,--build-id=none,--strip-all -flto -static -s" ;;
+  x86_64_raw|aarch64_raw)
+    CFLAGS+=" -fno-builtin -ffreestanding -nostdlib -fno-stack-protector -static"
+    LIBS="${LIBS:-} -lgcc"
+    if [ "$PLATFORM" = aarch64_raw ]; then
+      CFLAGS+=" -mno-outline-atomics"
+    fi
+    ;;
   libc)
-    CFLAGS="$CFLAGS_COMMON -march=native -mtune=native \
--D_GNU_SOURCE -Wno-unused-result -Wl,--gc-sections -flto -s"
+    CFLAGS+=" -D_GNU_SOURCE -Wno-unused-result"
     LIBS="${LIBS:-} -lrt" ;;
   win64)
-    CFLAGS="$CFLAGS_COMMON \
--Wno-unused-result -mconsole -Wl,--gc-sections -flto -s"
+    CFLAGS+=" -Wno-unused-result -mconsole"
     LIBS="${LIBS:-} -lws2_32 -lbcrypt" ;;
-  *)
-    echo "Unknown platform: $PLATFORM" >&2; exit 1 ;;
+  *) echo "Unknown platform: $PLATFORM" >&2; exit 1 ;;
 esac
+
+if [ "$RELEASE" = 1 ]; then
+  CFLAGS+=" -O3 -ffast-math -fno-finite-math-only -funroll-loops -ftree-vectorize \
+-finline-functions -ffunction-sections -fdata-sections -flto -s \
+-fno-ident -Wl,--gc-sections,--strip-all"
+  case "$PLATFORM" in
+    aarch64_raw) CFLAGS+=" -mcpu=native" ;;
+    x86_64_raw|libc) CFLAGS+=" -march=native -mtune=native" ;;
+  esac
+  if [ "$PLATFORM" = x86_64_raw ]; then
+    CFLAGS+=" -mshstk"
+  fi
+  case "$PLATFORM" in
+    x86_64_raw|aarch64_raw)
+      CFLAGS+=" -fno-asynchronous-unwind-tables -fno-unwind-tables" ;;
+  esac
+  if [ "$PLATFORM" != win64 ]; then
+    CFLAGS+=" -Wl,--build-id=none"
+    if [[ "$CC_NAME" == clang || "$CC_NAME" == clang-* ]]; then
+      CFLAGS+=" -fuse-ld=lld"
+      if [ "$PLATFORM" != libc ]; then
+        CFLAGS+=" -fno-PIC"
+      fi
+    fi
+  fi
+fi
 
 if [ -n "${CFLAGS_EXTRA:-}" ]; then
   CFLAGS="$CFLAGS $CFLAGS_EXTRA"
-fi
-if [ -n "$MCPU" ]; then
-  CFLAGS="$CFLAGS -mcpu=$MCPU"
-fi
-if [ -n "$MARCH" ]; then
-  CFLAGS="$CFLAGS -march=$MARCH"
-fi
-if [ -n "$MTUNE" ]; then
-  CFLAGS="$CFLAGS -mtune=$MTUNE"
 fi
 
 # Prefer installed resources, falling back to the checkout.
@@ -111,8 +112,7 @@ esac
 TMPFILE=$(mktemp /tmp/pikacc-XXXXXX.c)
 LIBPK_C=""
 TMPPKA=$(mktemp /tmp/pikacc-pka-XXXXXX.pka)
-cleanup() { rm -f "$TMPFILE" "$LIBPK_C" "$TMPPKA"; }
-trap cleanup EXIT
+trap 'rm -f "$TMPFILE" "$LIBPK_C" "$TMPPKA"' EXIT
 
 RT_FWD='#include <stddef.h>
 extern int rt_memcmp(const void*, const void*, size_t);
@@ -158,18 +158,27 @@ cat "$PLATFORM_H" "${COMMON_C[@]}" "${TARGET_C[@]}" > "$LIBPK_C"
 # --- Build single translation unit ---
 {
   printf '%s' "$RT_FWD"
-  if [ ${#CFILES[@]} -gt 0 ]; then cat "${CFILES[@]}"; fi
+  if [ ${#CFILES[@]} -gt 0 ]; then
+    cat "${CFILES[@]}"
+  fi
   # Compile each lib module with -N <modname>
   for pka in "${LIBPK_MODULES[@]}"; do
     modname=$(basename "$(dirname "$pka")")
-    { printf '%s\n' "-N $modname"; cat "$pka"; } > "$TMPPKA"
+    {
+      printf '%s\n' "-N $modname"
+      cat "$pka"
+    } > "$TMPPKA"
     "$PIKA2C" < "$TMPPKA"
   done
   # Compile user .pka files with lib headers for types/defaults/symbols
   {
     for pka in "${LIBPK_MODULES[@]}"; do
       modname=$(basename "$(dirname "$pka")")
-      { printf '%s\n' "-H"; printf '%s\n' "-N $modname"; cat "$pka"; } > "$TMPPKA"
+      {
+        printf '%s\n' "-H"
+        printf '%s\n' "-N $modname"
+        cat "$pka"
+      } > "$TMPPKA"
       "$PIKA2C" < "$TMPPKA"
     done
     cat "${PKAFILES[@]}"
@@ -180,7 +189,7 @@ cat "$PLATFORM_H" "${COMMON_C[@]}" "${TARGET_C[@]}" > "$LIBPK_C"
 
 # --- Compile ---
 start_ms=$(date +%s%3N)
-$CC $CFLAGS -o "$OUTPUT" "$TMPFILE" "${OFILES[@]}" ${LIBS:-}
+"$CC" $CFLAGS -o "$OUTPUT" "$TMPFILE" "${OFILES[@]}" ${LIBS:-} "${CC_ARGS[@]}"
 end_ms=$(date +%s%3N)
 duration=$((end_ms - start_ms))
 
