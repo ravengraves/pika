@@ -63,7 +63,8 @@ ninja bench_rs                    # run all Rust reference benchmarks
 ninja bench_all                   # run all benchmarks (Pika + C + Rust)
 ```
 
-Override the C compiler: `CC=clang bin/pikacc ...` or `BENCH_CC=clang scripts/benchmark_c.sh`
+Pika benchmarks use `-R` for release builds. Override the C compiler with
+`bin/pikacc --cc clang -R ...` or `BENCH_CC=clang scripts/benchmark_c.sh`.
 
 ## Test Environment
 
@@ -79,8 +80,8 @@ Rust Compiler:  rustc 1.93.0 (254b59607 2026-01-19)
 Rust Flags:     -C opt-level=3 -C target-cpu=native
 Clang:          Ubuntu clang version 18.1.3 (1ubuntu1)
 Pika extra:     -static -ffreestanding -nostdlib -fno-builtin
-Dhrystone:      Pika uses CC=clang (Clang inlines the single-TU build more aggressively)
-Mandelbrot:     Pika uses CC=clang (Clang auto-vectorizes better than GCC for this workload)
+Dhrystone:      Pika uses --cc clang (Clang inlines the single-TU build more aggressively)
+Mandelbrot:     Pika uses --cc clang (Clang auto-vectorizes better than GCC for this workload)
 ```
 
 ## Results: C vs Rust vs Pika

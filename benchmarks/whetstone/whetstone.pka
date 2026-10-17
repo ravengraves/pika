@@ -4,6 +4,7 @@
 
 use rt;
 use strings;
+use math;
 
 // Section results (stored during benchmark, printed at end)
 let whet_sec_result: [9]f64 = [0...];
@@ -176,10 +177,10 @@ export fn main() void = {
     let ts5 = bench_time_ns();
     for (let ix: i64 = 0; ix < xtra; ix += 1) {
         for (let i: i64 = 1; i < n5; i += 1) {
-            x = t * math_atan(t2 * math_sin(x) * math_cos(x) /
-                (math_cos(x + y) + math_cos(x - y) - 1.0f32));
-            y = t * math_atan(t2 * math_sin(y) * math_cos(y) /
-                (math_cos(x + y) + math_cos(x - y) - 1.0f32));
+            x = t * math::atan(t2 * math::sin(x) * math::cos(x) /
+                (math::cos(x + y) + math::cos(x - y) - 1.0f32));
+            y = t * math::atan(t2 * math::sin(y) * math::cos(y) /
+                (math::cos(x + y) + math::cos(x - y) - 1.0f32));
         };
         t = 1.0f32 - t;
     };
@@ -230,7 +231,7 @@ export fn main() void = {
     let ts8 = bench_time_ns();
     for (let ix: i64 = 0; ix < xtra; ix += 1) {
         for (let i: i64 = 0; i < n8; i += 1) {
-            x = math_sqrt(math_exp(math_log(x) / t1));
+            x = math::sqrt(math::exp(math::log(x) / t1));
         };
     };
     let te8 = bench_time_ns();
