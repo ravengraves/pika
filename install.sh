@@ -34,5 +34,7 @@ PATH="/usr/local/bin:$PATH"
 export PATH
 cd pika
 sh scripts/bootstrap_pikacc.sh
+sudo install -d /usr/local/share/pika
+sudo cp -R lib runtime /usr/local/share/pika/
 sudo install -m 0755 build/pikacc /usr/local/bin/pikacc
 echo "Done"

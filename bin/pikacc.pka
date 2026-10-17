@@ -48,7 +48,7 @@ fn usage() void = {
 	fb::Prints("  --mtune <cpu>\n");
 	fb::Prints("  --platform x86_64_raw|aarch64_raw|libc|win64\n");
 	fb::Prints("  -O0|-O1|-O2|-O3\n");
-	fb::Prints("  -M <module_root>   (recursive module discovery, default: lib)\n");
+	fb::Prints("  -M <module_root>   (recursive module discovery, default: /usr/local/share/pika/lib or local lib)\n");
 	fb::Prints("  -T +tag            include files/folders containing +tag\n");
 	fb::Prints("  -T -tag            exclude files/folders containing +tag\n");
 };
@@ -587,7 +587,13 @@ export fn main() void = {
 		used = 0z,
 	};
 
-	push(&mod_roots, "lib");
+	let data_dir = ".";
+	if (file::IsDir("/usr/local/share/pika/lib") &&
+		file::IsDir("/usr/local/share/pika/runtime")) {
+		data_dir = "/usr/local/share/pika";
+	};
+	let data_path: [1024]u8 = [0...];
+	push(&mod_roots, pool_store(&pool, join_path(data_path, data_dir, "lib")));
 
 	let argc = args::Count();
 	let i: i32 = 1;
@@ -695,6 +701,8 @@ export fn main() void = {
 	} else if (streq(platform, "win64")) {
 		rt_file = "runtime/rt_win64.c";
 	};
+
+	rt_file = pool_store(&pool, join_path(data_path, data_dir, rt_file));
 
 	ensure_dir("build");
 	ensure_dir("build/tmp");

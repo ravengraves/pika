@@ -94,11 +94,17 @@ if [ -n "$MTUNE" ]; then
   CFLAGS="$CFLAGS -mtune=$MTUNE"
 fi
 
+# Prefer installed resources, falling back to the checkout.
+DATA_DIR=.
+if [ -d /usr/local/share/pika/lib ] && [ -d /usr/local/share/pika/runtime ]; then
+  DATA_DIR=/usr/local/share/pika
+fi
+
 # --- Runtime selection ---
 case "$PLATFORM" in
-  x86_64_raw|aarch64_raw) RT_FILE="runtime/rt.c" ;;
-  libc)                    RT_FILE="runtime/rt_libc.c" ;;
-  win64)                   RT_FILE="runtime/rt_win64.c" ;;
+  x86_64_raw|aarch64_raw) RT_FILE="$DATA_DIR/runtime/rt.c" ;;
+  libc)                    RT_FILE="$DATA_DIR/runtime/rt_libc.c" ;;
+  win64)                   RT_FILE="$DATA_DIR/runtime/rt_win64.c" ;;
 esac
 
 # --- Temp files (cleaned on exit) ---
@@ -126,9 +132,9 @@ esac
 LIBPK_MODULES=()
 while IFS= read -r f; do
   LIBPK_MODULES+=("$f")
-done < <(find lib -name '*.pka' -type f | sort)
+done < <(find "$DATA_DIR/lib" -name '*.pka' -type f | sort)
 
-PLATFORM_H="lib/platform+${LIB_TARGET}.h"
+PLATFORM_H="$DATA_DIR/lib/platform+${LIB_TARGET}.h"
 TARGET_PATTERNS=( -name "*+${LIB_TARGET}.c" )
 case "$PLATFORM" in
   x86_64_raw|aarch64_raw)
@@ -138,12 +144,12 @@ esac
 COMMON_C=()
 while IFS= read -r f; do
   COMMON_C+=("$f")
-done < <(find lib -type f -name '*.c' ! -name '*+*.c' | sort)
+done < <(find "$DATA_DIR/lib" -type f -name '*.c' ! -name '*+*.c' | sort)
 
 TARGET_C=()
 while IFS= read -r f; do
   TARGET_C+=("$f")
-done < <(find lib -type f \( "${TARGET_PATTERNS[@]}" \) | sort)
+done < <(find "$DATA_DIR/lib" -type f \( "${TARGET_PATTERNS[@]}" \) | sort)
 
 # Concatenate platform C backing into temp file
 LIBPK_C=$(mktemp /tmp/libpka-XXXXXX.c)
